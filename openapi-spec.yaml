@@ -1,0 +1,392 @@
+# OpenAPI 3.0 Specification for Ignitabull API
+# Generated from TypeScript definitions and JSDoc comments
+
+openapi: 3.0.0
+info:
+  title: Ignitabull API
+  version: 1.0.0
+  description: |
+    Comprehensive Amazon seller analytics and automation platform API.
+    
+    ## Overview
+    The Ignitabull API provides access to Amazon marketplace data, advertising campaign management,
+    analytics, and automation tools for Amazon sellers.
+    
+    ## Authentication
+    All API endpoints (except health checks and auth endpoints) require authentication using a Bearer token.
+    Obtain a token by calling the `/api/auth/signin` endpoint.
+    
+    ## Rate Limiting
+    API requests are rate-limited to ensure fair usage:
+    - General API endpoints: 100 requests per minute
+    - Authentication endpoints: 5 requests per 15 minutes
+    - Upload endpoints: 10 requests per minute
+    
+    Rate limit headers are included in all responses:
+    - `X-RateLimit-Limit`: Request limit per time window
+    - `X-RateLimit-Remaining`: Remaining requests in current window
+    - `X-RateLimit-Reset`: Time when rate limit resets
+    
+    ## Error Handling
+    The API uses conventional HTTP response codes to indicate success or failure.
+    Error responses include a JSON object with error details and a correlation ID for debugging.
+    
+    ## Correlation IDs
+    Each request is assigned a unique correlation ID for distributed tracing.
+    Include the `X-Correlation-ID` header in requests for better debugging support.
+    
+  contact:
+    name: Ignitabull Support
+    email: support@ignitabull.com
+    url: https://ignitabull.com/support
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: https://ignitabull.com/terms
+
+servers:
+  - url: https://api.ignitabull.com
+    description: Production server
+  - url: https://staging-api.ignitabull.com
+    description: Staging server
+  - url: http://localhost:3001
+    description: Development server
+
+security:
+  - BearerAuth: []
+
+paths:
+  /api/health:
+    get:
+      summary: Get system health status
+      description: Returns comprehensive health information for all system components
+      tags: [Health]
+      security: []
+      responses:
+        '200':
+          description: System health information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheck'
+        '503':
+          description: System is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheck'
+
+  /api/auth/signin:
+    post:
+      summary: Authenticate user
+      description: Sign in with email and password to receive access token
+      tags: [Authentication]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+              example:
+                email: user@example.com
+                password: SecurePass123!
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  accessToken:
+                    type: string
+                  refreshToken:
+                    type: string
+                  expiresIn:
+                    type: integer
+                  user:
+                    $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+
+  /api/amazon/products:
+    get:
+      summary: Search Amazon products
+      description: Search for products in Amazon marketplace
+      tags: [Amazon API]
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+          example: "wireless headphones"
+        - name: marketplace
+          in: query
+          schema:
+            type: string
+          example: "ATVPDKIKX0DER"
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Products found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AmazonProduct'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from authentication endpoints
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      description: Page number for pagination
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    
+    Limit:
+      name: limit
+      in: query
+      description: Number of items per page
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 10
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Error code
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          description: Additional error details
+        correlationId:
+          type: string
+          description: Request correlation ID for debugging
+
+    PaginationMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+        total:
+          type: integer
+        totalPages:
+          type: integer
+
+    User:
+      type: object
+      required: [id, email, firstName, lastName]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        firstName:
+          type: string
+        lastName:
+          type: string
+        organizationId:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [ADMIN, MEMBER, VIEWER]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AmazonProduct:
+      type: object
+      required: [asin, title]
+      properties:
+        asin:
+          type: string
+          description: Amazon Standard Identification Number
+        title:
+          type: string
+        brand:
+          type: string
+        category:
+          type: string
+        price:
+          type: number
+          format: float
+        currency:
+          type: string
+        availability:
+          type: string
+          enum: [IN_STOCK, OUT_OF_STOCK, LIMITED]
+        imageUrl:
+          type: string
+          format: uri
+        rating:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 5
+        reviewCount:
+          type: integer
+
+    HealthCheck:
+      type: object
+      required: [status, timestamp]
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        timestamp:
+          type: string
+          format: date-time
+        uptime:
+          type: number
+        version:
+          type: string
+        environment:
+          type: string
+        services:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              status:
+                type: string
+                enum: [healthy, degraded, unhealthy]
+              responseTime:
+                type: number
+              lastCheck:
+                type: string
+                format: date-time
+
+  responses:
+    UnauthorizedError:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: UNAUTHORIZED
+            message: Authentication required
+
+    ValidationError:
+      description: Validation failed
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Error'
+              - type: object
+                properties:
+                  details:
+                    type: object
+                    properties:
+                      errors:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            field:
+                              type: string
+                            code:
+                              type: string
+                            message:
+                              type: string
+
+    RateLimitError:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: RATE_LIMIT_EXCEEDED
+            message: Too many requests, please try again later
+      headers:
+        X-RateLimit-Limit:
+          description: Request limit per time window
+          schema:
+            type: integer
+        X-RateLimit-Remaining:
+          description: Remaining requests in current window
+          schema:
+            type: integer
+        X-RateLimit-Reset:
+          description: Time when rate limit resets
+          schema:
+            type: integer
+        Retry-After:
+          description: Seconds to wait before retrying
+          schema:
+            type: integer
+
+tags:
+  - name: Authentication
+    description: User authentication and authorization
+  - name: Amazon API
+    description: Amazon marketplace integration
+  - name: Health
+    description: System health and monitoring
+  - name: Analytics
+    description: Analytics and reporting

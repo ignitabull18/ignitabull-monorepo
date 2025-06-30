@@ -1,0 +1,78 @@
+<brief>
+    <meta>
+        <version>3.0</version>
+        <author>Project Manager</author>
+        <target_agent>Claude</target_agent>
+        <creation_date>2025-06-30</creation_date>
+        <project>Ignitabull</project>
+        <objective>Execute Phase 3 of the Ignitabull MVP development: The Analytics Engine &amp; Data Visualization.</objective>
+    </meta>
+
+    <directives>
+        <praise>
+            Your work on Phase 2 was exemplary. The implementation was robust, secure, and thoughtfully designed. You have maintained the high standard of quality I expect.
+        </praise>
+        <style_guide>
+            - All new backend logic for data processing must be efficient and scalable.
+            - All new UI components for data visualization must be interactive and responsive. Use the `recharts` library, which is already a dependency.
+        </style_guide>
+    </directives>
+
+    <execution_plan>
+        <phase id="3" name="Analytics Engine &amp; Data Visualization">
+            <objective>Build the backend engine to process and aggregate sales data, and create the first set of data visualization widgets for the dashboard. This will transform raw data into actionable insights for our users.</objective>
+            <tasks>
+                <task id="3.1" name="Create Data Aggregation Service">
+                    <description>Create a new service responsible for fetching raw order data from integrations and aggregating it into daily performance metrics. This service will run as a background job.</description>
+                    <scope>
+                        - A new file: `packages/core/src/services/analytics-service.ts`.
+                        - A method `aggregateDailyMetrics(organizationId, date)` that:
+                            1. Fetches all orders for the given day from the Amazon integration.
+                            2. Calculates total revenue, number of orders, and average order value (AOV).
+                            3. Stores the aggregated results in the `metrics` table you created in Phase 1.
+                        - A new API endpoint (e.g., a cron job handler) that can trigger this service for a given organization.
+                    </scope>
+                    <acceptance_criteria>
+                        - A new `AnalyticsService` class is created.
+                        - The `aggregateDailyMetrics` method correctly calculates and stores daily metrics.
+                        - An API endpoint exists to trigger the aggregation process.
+                    </acceptance_criteria>
+                </task>
+                <task id="3.2" name="Create a Revenue Chart Widget">
+                    <description>Build a new dashboard widget that displays a time-series line chart of the user's revenue over the last 30 days.</description>
+                    <scope>
+                        - A new component: `apps/web/components/dashboard/revenue-chart-widget.tsx`.
+                        - The widget will fetch the last 30 days of aggregated revenue data from our `metrics` table.
+                        - Use the `recharts` library to display a line chart of revenue over time.
+                        - The chart must be interactive (e.g., show a tooltip with the exact revenue and date on hover).
+                        - Handle loading, error, and empty states (e.g., show a message prompting the user to sync their data if none is available).
+                    </scope>
+                    <acceptance_criteria>
+                        - A new revenue chart widget is added to the dashboard.
+                        - The widget correctly displays the last 30 days of revenue data.
+                        - The chart is interactive and responsive.
+                    </acceptance_criteria>
+                </task>
+                <task id="3.3" name="Create KPI Card Widgets">
+                    <description>Build a set of smaller "Key Performance Indicator" (KPI) card widgets for the dashboard to show vital metrics at a glance.</description>
+                    <scope>
+                        - Three new components:
+                            1. `apps/web/components/dashboard/kpi-card-widget.tsx` (a generic, reusable card).
+                            2. A widget to display "Today's Revenue".
+                            3. A widget to display "Today's Orders".
+                        - The widgets will fetch the latest data from the `metrics` table.
+                        - Each card should display the metric's value and a percentage change compared to the previous day.
+                    </scope>
+                    <acceptance_criteria>
+                        - New KPI card widgets for Revenue and Orders are added to the dashboard.
+                        - The cards display the correct values and percentage changes.
+                        - The cards handle loading and empty states.
+                    </acceptance_criteria>
+                </task>
+            </tasks>
+            <validation>
+                <instruction>Upon completion of this phase, create a new work report named `phase3_analytics_report.md` in the `/claude_work_reports` directory. The report must detail the implementation of each task, including API endpoints and the structure of the new service. I will be validating the entire data pipeline, from triggering the aggregation to seeing the charts update on the dashboard.</instruction>
+            </validation>
+        </phase>
+    </execution_plan>
+</brief>

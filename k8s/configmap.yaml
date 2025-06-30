@@ -1,0 +1,19 @@
+# ConfigMap for shared configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ignitabull-config
+  namespace: ignitabull
+data:
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+  API_URL: "https://api.ignitabull.com"
+  WS_URL: "wss://api.ignitabull.com"
+  
+  # Rate limiting configuration
+  RATE_LIMIT_WINDOW_MS: "60000"
+  RATE_LIMIT_MAX_REQUESTS: "100"
+  
+  # Health check intervals
+  HEALTH_CHECK_INTERVAL: "30"
+  HEALTH_CHECK_TIMEOUT: "10"

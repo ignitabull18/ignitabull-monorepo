@@ -1,0 +1,84 @@
+<brief>
+    <meta>
+        <version>4.0</version>
+        <author>Project Manager</author>
+        <target_agent>Claude</target_agent>
+        <creation_date>2025-06-30</creation_date>
+        <project>Ignitabull</project>
+        <objective>Execute Phase 4 of the Ignitabull MVP development: Polish, User Onboarding, and Production Readiness.</objective>
+    </meta>
+
+    <directives>
+        <praise>
+            The quality of your work in Phase 3 was outstanding. The analytics engine is a critical piece of our platform, and you delivered it flawlessly. This is the final phase of the MVP. Let's finish strong.
+        </praise>
+        <style_guide>
+            - Your primary focus in this phase is user experience. All changes should make the app easier and more intuitive to use.
+            - Pay close attention to detail: loading states, error messages, and empty states must be handled gracefully everywhere.
+        </style_guide>
+    </directives>
+
+    <execution_plan>
+        <phase id="4" name="Polish, Onboarding &amp; Production Readiness">
+            <objective>Refine the user experience, create a simple onboarding flow, and prepare the application for deployment to a production environment. This phase is about making the application ready for its first real users.</objective>
+            <tasks>
+                <task id="4.1" name="Implement a User Onboarding Flow">
+                    <description>Create a simple, guided onboarding experience for new users after they sign up. The goal is to guide them to connect their Amazon account, which is the primary activation event.</description>
+                    <scope>
+                        - After a new user's first sign-in, they should be redirected to a dedicated onboarding page (e.g., `/welcome`).
+                        - This page should have a clear welcome message and a single, prominent call-to-action: "Connect Your Amazon Account".
+                        - This button should take them directly to the `/settings/integrations` page.
+                        - Once a user has connected their Amazon account, they should no longer be redirected to the onboarding page and should land on the main dashboard instead.
+                    </scope>
+                    <acceptance_criteria>
+                        - New users are automatically guided through the onboarding flow.
+                        - The flow successfully directs users to connect their primary integration.
+                        - The onboarding experience is skipped for users who have already connected an integration.
+                    </acceptance_criteria>
+                </task>
+                <task id="4.2" name="Refine Dashboard Empty States">
+                    <description>Improve the "empty states" of the dashboard widgets to be more helpful and actionable for new users who have not yet synced their data.</description>
+                    <scope>
+                        - When a user has connected their Amazon account but has not yet synced any data, the dashboard widgets (Revenue Chart, KPI cards, etc.) should not just say "No data".
+                        - They should display a message like "Your data is syncing. Please check back in a few minutes."
+                        - Add a "Sync Now" button to the Integrations page that manually triggers the `aggregateRecentMetrics` function for the user's organization.
+                    </scope>
+                    <acceptance_criteria>
+                        - Dashboard widgets have clear and helpful empty states that differentiate between "not connected" and "not yet synced".
+                        - Users have a manual way to trigger a data sync.
+                    </acceptance_criteria>
+                </task>
+                <task id="4.3" name="Create a Production Dockerfile and Deployment Script">
+                    <description>Prepare the application for production deployment by creating a multi-stage Dockerfile for the server and a simple deployment script.</description>
+                    <scope>
+                        - Create a `Dockerfile.prod` for the `apps/server` application. It should be a multi-stage build to create a small, optimized production image.
+                        - Create a `docker-compose.prod.yml` file that defines the production services (server, database, etc.).
+                        - Create a simple shell script `scripts/deploy.sh` that builds the production Docker images and starts the services using `docker-compose`.
+                    </scope>
+                    <acceptance_criteria>
+                        - A production-ready Dockerfile for the server exists.
+                        - A production docker-compose file exists.
+                        - A deployment script exists to build and run the production environment.
+                    </acceptance_criteria>
+                </task>
+                 <task id="4.4" name="Final Review and Cleanup">
+                    <description>Perform a final review of the entire application to ensure consistency, remove any console logs, and clean up any commented-out code.</description>
+                    <scope>
+                        - Review all pages and components for consistent styling and behavior.
+                        - Search the entire codebase for `console.log` and remove them.
+                        - Remove any dead or commented-out code.
+                        - Ensure all environment variables are documented in the `.env.example` file.
+                    </scope>
+                    <acceptance_criteria>
+                        - The codebase is clean and free of debug statements.
+                        - The UI is consistent and polished.
+                        - The `.env.example` file is up-to-date.
+                    </acceptance_criteria>
+                </task>
+            </tasks>
+            <validation>
+                <instruction>This is the final phase of the MVP. Upon completion, create a final work report named `phase4_final_report.md` in the `/claude_work_reports` directory. The report should detail all the polishing touches and the new deployment setup. After I validate this phase, the MVP will be considered complete.</instruction>
+            </validation>
+        </phase>
+    </execution_plan>
+</brief>

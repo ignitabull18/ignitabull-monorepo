@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+	html {
+		scroll-behavior: smooth;
+	}
+
+	body {
+		@apply text-gray-900 bg-white;
+	}
+
+	h1,
+	h2,
+	h3,
+	h4,
+	h5,
+	h6 {
+		@apply font-display font-semibold;
+	}
+}
+
+@layer components {
+	.btn {
+		@apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-50;
+	}
+
+	.btn-primary {
+		@apply btn bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500;
+	}
+
+	.btn-secondary {
+		@apply btn bg-gray-100 text-gray-900 hover:bg-gray-200 focus:ring-gray-500;
+	}
+
+	.btn-outline {
+		@apply btn border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:ring-gray-500;
+	}
+
+	.input {
+		@apply block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder-gray-400 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500;
+	}
+
+	.card {
+		@apply rounded-xl border border-gray-200 bg-white p-6 shadow-sm;
+	}
+
+	.section-padding {
+		@apply px-4 py-16 sm:px-6 lg:px-8 lg:py-24;
+	}
+
+	.container-width {
+		@apply mx-auto max-w-7xl;
+	}
+
+	.gradient-text {
+		@apply bg-gradient-to-r from-primary-600 to-secondary-600 bg-clip-text text-transparent;
+	}
+}
+
+@layer utilities {
+	.animation-delay-1000 {
+		animation-delay: 1000ms;
+	}
+
+	.animation-delay-2000 {
+		animation-delay: 2000ms;
+	}
+
+	.animation-delay-3000 {
+		animation-delay: 3000ms;
+	}
+
+	.text-balance {
+		text-wrap: balance;
+	}
+}

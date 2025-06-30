@@ -1,0 +1,90 @@
+# Bun configuration for Ignitabull monorepo
+
+# Install configuration
+[install]
+# Use exact versions for consistency
+exact = true
+
+# Auto-install peer dependencies
+auto = true
+
+# Global cache directory
+globalDir = "~/.bun"
+
+# Package metadata cache
+cacheDir = "~/.bun/cache"
+
+# Lockfile settings
+[install.lockfile]
+# Save lockfile after every install
+save = true
+
+# Print a diff of the lockfile changes
+print = "yarn"
+
+# Registry configuration
+[install.registry]
+default = "https://registry.npmjs.org"
+
+# Scoped registry configuration (if needed)
+# [install.scopes]
+# "@mycompany" = "https://npm.mycompany.com"
+
+# Install behavior
+[install.cache]
+# Disable cache for CI environments
+disable = false
+
+# Cache directory
+dir = "~/.bun/install/cache"
+
+# Development settings
+[dev]
+# Port for the dev server
+port = 3000
+
+# Test configuration
+[test]
+# Use Bun's test runner
+runner = "bun"
+
+# Test file patterns
+include = ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"]
+
+# Coverage settings
+coverage = true
+coverageReporter = ["text", "lcov"]
+
+# Runtime configuration
+[run]
+# Automatically install missing packages
+autoInstall = true
+
+# Bundle configuration
+[bundle]
+# Source maps for debugging
+sourcemap = "external"
+
+# Target environment
+target = "node"
+
+# Minification
+minify = true
+
+# Environment-specific overrides
+[env]
+# Production optimizations
+production = { minify = true, sourcemap = false }
+
+# Development settings
+development = { minify = false, sourcemap = true }
+
+# Performance settings
+[performance]
+# Maximum heap size
+maxHeapSize = "4096"
+
+# Telemetry settings
+[telemetry]
+# Disable telemetry
+enabled = false

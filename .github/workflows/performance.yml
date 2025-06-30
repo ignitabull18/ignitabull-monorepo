@@ -1,0 +1,360 @@
+# Performance Testing Pipeline
+name: Performance
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run weekly performance tests
+    - cron: '0 4 * * 0'
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  # Job 1: Lighthouse Performance Audit
+  lighthouse:
+    name: Lighthouse Performance Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Start application stack
+        run: |
+          docker-compose up -d
+          sleep 60
+
+      - name: Wait for applications to be ready
+        run: |
+          timeout 120 bash -c 'until curl -f http://localhost:3000; do sleep 2; done'
+          timeout 120 bash -c 'until curl -f http://localhost:3002; do sleep 2; done'
+
+      - name: Lighthouse CI - Web App
+        uses: treosh/lighthouse-ci-action@v10
+        with:
+          urls: |
+            http://localhost:3000
+            http://localhost:3000/dashboard
+            http://localhost:3000/login
+          configPath: '.lighthouserc.json'
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+
+      - name: Lighthouse CI - Marketing Site
+        uses: treosh/lighthouse-ci-action@v10
+        with:
+          urls: |
+            http://localhost:3002
+            http://localhost:3002/pricing
+            http://localhost:3002/about
+          configPath: '.lighthouserc.json'
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+
+      - name: Stop application stack
+        if: always()
+        run: docker-compose down
+
+  # Job 2: Load Testing
+  load-test:
+    name: Load Testing
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Start application stack
+        run: |
+          docker-compose up -d
+          sleep 60
+
+      - name: Wait for API to be ready
+        run: |
+          timeout 120 bash -c 'until curl -f http://localhost:3001/api/health; do sleep 2; done'
+
+      - name: Install k6
+        run: |
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Run API load tests
+        run: |
+          k6 run --out json=load-test-results.json tests/performance/api-load-test.js
+
+      - name: Run web app load tests
+        run: |
+          k6 run --out json=web-load-test-results.json tests/performance/web-load-test.js
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v3
+        with:
+          name: load-test-results
+          path: |
+            load-test-results.json
+            web-load-test-results.json
+
+      - name: Stop application stack
+        if: always()
+        run: docker-compose down
+
+  # Job 3: Database Performance Test
+  database-performance:
+    name: Database Performance Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ignitabull_perf
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run database migrations
+        run: |
+          # Add your migration commands here
+          echo "Running database migrations..."
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ignitabull_perf
+
+      - name: Seed test data
+        run: |
+          # Add your data seeding commands here
+          echo "Seeding performance test data..."
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ignitabull_perf
+
+      - name: Run database performance tests
+        run: |
+          npm run test:db-performance
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ignitabull_perf
+
+  # Job 4: Memory and CPU Profiling
+  profiling:
+    name: Application Profiling
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install profiling tools
+        run: |
+          npm install -g clinic autocannon
+
+      - name: Start server with profiling
+        run: |
+          npm run build -- --filter=server
+          cd apps/server
+          clinic doctor --dest ../../profiling-results -- npm start &
+          SERVER_PID=$!
+          echo $SERVER_PID > server.pid
+          sleep 30
+
+      - name: Run performance benchmarks
+        run: |
+          autocannon -d 60 -c 10 http://localhost:3001/api/health
+          autocannon -d 60 -c 10 http://localhost:3001/api/products
+
+      - name: Stop server
+        run: |
+          if [ -f apps/server/server.pid ]; then
+            kill $(cat apps/server/server.pid) || true
+          fi
+          sleep 10
+
+      - name: Upload profiling results
+        uses: actions/upload-artifact@v3
+        with:
+          name: profiling-results
+          path: profiling-results/
+
+  # Job 5: Bundle Size Analysis
+  bundle-analysis:
+    name: Bundle Size Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      matrix:
+        app: [web, marketing]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build -- --filter=${{ matrix.app }}
+
+      - name: Analyze bundle size
+        uses: nextjs-bundle-analysis/compare-action@v1
+        if: matrix.app == 'web'
+        with:
+          build-script: npm run build -- --filter=web
+          base-branch: main
+
+      - name: Install bundle analyzer
+        run: npm install -g webpack-bundle-analyzer
+
+      - name: Generate bundle report
+        run: |
+          cd apps/${{ matrix.app }}
+          npx webpack-bundle-analyzer .next/static/chunks/*.js --report --mode static --no-open
+        if: matrix.app == 'web'
+
+      - name: Upload bundle analysis
+        uses: actions/upload-artifact@v3
+        with:
+          name: bundle-analysis-${{ matrix.app }}
+          path: apps/${{ matrix.app }}/report.html
+        if: matrix.app == 'web'
+
+  # Job 6: Performance Report
+  performance-report:
+    name: Generate Performance Report
+    runs-on: ubuntu-latest
+    needs: [lighthouse, load-test, database-performance, profiling, bundle-analysis]
+    if: always()
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+
+      - name: Generate performance report
+        run: |
+          echo "# Performance Test Report" > performance-report.md
+          echo "Generated on: $(date)" >> performance-report.md
+          echo "" >> performance-report.md
+          
+          echo "## Test Results" >> performance-report.md
+          echo "- Lighthouse Audit: ${{ needs.lighthouse.result }}" >> performance-report.md
+          echo "- Load Testing: ${{ needs.load-test.result }}" >> performance-report.md
+          echo "- Database Performance: ${{ needs.database-performance.result }}" >> performance-report.md
+          echo "- Application Profiling: ${{ needs.profiling.result }}" >> performance-report.md
+          echo "- Bundle Size Analysis: ${{ needs.bundle-analysis.result }}" >> performance-report.md
+          echo "" >> performance-report.md
+          
+          echo "## Performance Metrics" >> performance-report.md
+          echo "### Web Vitals" >> performance-report.md
+          echo "- First Contentful Paint (FCP)" >> performance-report.md
+          echo "- Largest Contentful Paint (LCP)" >> performance-report.md
+          echo "- Cumulative Layout Shift (CLS)" >> performance-report.md
+          echo "- First Input Delay (FID)" >> performance-report.md
+          echo "" >> performance-report.md
+          
+          echo "### Load Test Results" >> performance-report.md
+          echo "- Response Time (p95)" >> performance-report.md
+          echo "- Throughput (requests/second)" >> performance-report.md
+          echo "- Error Rate" >> performance-report.md
+          echo "" >> performance-report.md
+          
+          echo "## Recommendations" >> performance-report.md
+          echo "1. Review any performance regressions" >> performance-report.md
+          echo "2. Optimize bundle sizes if increased" >> performance-report.md
+          echo "3. Address database query performance issues" >> performance-report.md
+          echo "4. Monitor memory usage and garbage collection" >> performance-report.md
+
+      - name: Upload performance report
+        uses: actions/upload-artifact@v3
+        with:
+          name: performance-report
+          path: performance-report.md
+
+      - name: Comment performance report on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('performance-report.md', 'utf8');
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: report
+            });
+
+      - name: Notify on performance regression
+        if: |
+          needs.lighthouse.result == 'failure' ||
+          needs.load-test.result == 'failure'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          custom_payload: |
+            {
+              "text": "⚠️ Performance regression detected!",
+              "attachments": [
+                {
+                  "color": "warning",
+                  "fields": [
+                    {
+                      "title": "Repository",
+                      "value": "${{ github.repository }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Branch",
+                      "value": "${{ github.ref }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Action",
+                      "value": "Review performance findings",
+                      "short": false
+                    }
+                  ]
+                }
+              ]
+            }
+          webhook_url: ${{ secrets.PERFORMANCE_SLACK_WEBHOOK }}

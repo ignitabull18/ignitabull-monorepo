@@ -2,30 +2,18 @@
 // safe to delete
 
 {
-  "$schema": "https://better-t-stack.dev/schema.json",
-  "version": "2.22.7",
-  "createdAt": "2025-06-27T22:02:39.488Z",
-  "database": "postgres",
-  "orm": "drizzle",
-  "backend": "next",
-  "runtime": "bun",
-  "frontend": [
-    "next",
-    "native-nativewind"
-  ],
-  "addons": [
-    "biome",
-    "husky",
-    "pwa",
-    "starlight",
-    "tauri",
-    "turborepo"
-  ],
-  "examples": [
-    "ai"
-  ],
-  "auth": false,
-  "packageManager": "bun",
-  "dbSetup": "supabase",
-  "api": "trpc"
+	"$schema": "https://better-t-stack.dev/schema.json",
+	"version": "2.22.7",
+	"createdAt": "2025-06-27T22:02:39.488Z",
+	"database": "postgres",
+	"orm": "drizzle",
+	"backend": "next",
+	"runtime": "bun",
+	"frontend": ["next", "native-nativewind"],
+	"addons": ["biome", "husky", "pwa", "starlight", "tauri", "turborepo"],
+	"examples": ["ai"],
+	"auth": false,
+	"packageManager": "bun",
+	"dbSetup": "supabase",
+	"api": "trpc"
 }

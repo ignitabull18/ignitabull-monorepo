@@ -1,0 +1,47 @@
+{
+	"name": "@ignitabull/amazon-core",
+	"version": "0.1.0",
+	"description": "Core utilities and types for Amazon API integrations",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		},
+		"./errors": {
+			"types": "./dist/errors/index.d.ts",
+			"default": "./dist/errors/index.js"
+		},
+		"./types": {
+			"types": "./dist/types/index.d.ts",
+			"default": "./dist/types/index.js"
+		},
+		"./utils": {
+			"types": "./dist/utils/index.d.ts",
+			"default": "./dist/utils/index.js"
+		}
+	},
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage",
+		"clean": "rm -rf dist",
+		"type-check": "tsc --noEmit"
+	},
+	"dependencies": {
+		"zod": "^3.24.1"
+	},
+	"devDependencies": {
+		"@types/node": "^22.10.2",
+		"typescript": "^5.7.2"
+	},
+	"files": [
+		"dist"
+	],
+	"publishConfig": {
+		"access": "restricted"
+	}
+}

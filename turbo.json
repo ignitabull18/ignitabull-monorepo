@@ -13,6 +13,17 @@
 		"check-types": {
 			"dependsOn": ["^check-types"]
 		},
+		"test": {
+			"dependsOn": ["^build"],
+			"inputs": [
+				"src/**/*.ts",
+				"src/**/*.tsx",
+				"test/**/*.ts",
+				"**/*.test.ts",
+				"**/*.spec.ts"
+			],
+			"outputs": ["coverage/**"]
+		},
 		"dev": {
 			"cache": false,
 			"persistent": true

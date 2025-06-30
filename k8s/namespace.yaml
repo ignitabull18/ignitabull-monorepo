@@ -1,0 +1,9 @@
+# Kubernetes namespace for Ignitabull applications
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ignitabull
+  labels:
+    name: ignitabull
+    app.kubernetes.io/name: ignitabull
+    app.kubernetes.io/version: "1.0.0"

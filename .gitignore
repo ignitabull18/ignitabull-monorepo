@@ -1,2 +1,7 @@
 node_modules
 .turbo
+
+# Package manager lockfiles (using Bun only)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml

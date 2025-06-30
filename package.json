@@ -10,10 +10,17 @@
 		"prepare": "husky",
 		"dev": "turbo dev",
 		"build": "turbo build",
+		"test": "turbo test",
+		"test:unit": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage",
+		"test:ui": "vitest --ui",
 		"check-types": "turbo check-types",
+		"check-env": "bun scripts/check-env.ts",
 		"dev:native": "turbo -F native dev",
 		"dev:web": "turbo -F web dev",
 		"dev:server": "turbo -F server dev",
+		"dev:marketing": "turbo -F marketing dev",
 		"db:push": "turbo -F server db:push",
 		"db:studio": "turbo -F server db:studio",
 		"db:generate": "turbo -F server db:generate",
@@ -21,14 +28,22 @@
 	},
 	"dependencies": {},
 	"devDependencies": {
-		"turbo": "^2.5.4",
 		"@biomejs/biome": "^2.0.0",
+		"@testing-library/jest-dom": "^6.5.0",
+		"@testing-library/react": "^16.2.0",
+		"@testing-library/user-event": "^14.5.4",
+		"@vitest/coverage-v8": "^2.1.8",
+		"@vitest/ui": "^2.1.8",
+		"happy-dom": "^15.9.0",
 		"husky": "^9.1.7",
-		"lint-staged": "^15.5.0"
+		"lint-staged": "^15.5.0",
+		"turbo": "^2.5.4",
+		"vitest": "^2.1.8",
+		"vitest-mock-extended": "^2.0.2"
 	},
 	"lint-staged": {
-		"*.{js,ts,cjs,mjs,d.cts,d.mts,jsx,tsx,json,jsonc}": [
-			"biome check --write ."
+		"*.{js,ts,cjs,mjs,d.cts,d.mts,jsx,tsx}": [
+			"biome check --write --no-errors-on-unmatched"
 		]
 	},
 	"packageManager": "bun@1.2.16"

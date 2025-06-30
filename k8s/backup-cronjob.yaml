@@ -1,0 +1,255 @@
+# Backup CronJob for PostgreSQL and Neo4j
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ignitabull-postgresql-backup
+  namespace: ignitabull
+  labels:
+    app: ignitabull-backup
+    component: database
+spec:
+  # Run daily at 2 AM UTC
+  schedule: "0 2 * * *"
+  timezone: "UTC"
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  successfulJobsHistoryLimit: 3
+  startingDeadlineSeconds: 300
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: ignitabull-backup
+            component: postgresql
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: postgresql-backup
+            image: postgres:15-alpine
+            command:
+            - /bin/sh
+            - -c
+            - |
+              # Install required tools
+              apk add --no-cache curl aws-cli openssl gzip findutils
+              
+              # Download backup script
+              curl -o /tmp/backup-postgresql.sh https://raw.githubusercontent.com/your-org/ignitabull/main/scripts/backup-postgresql.sh
+              chmod +x /tmp/backup-postgresql.sh
+              
+              # Run backup
+              /tmp/backup-postgresql.sh
+            env:
+            - name: POSTGRES_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: ignitabull-secrets
+                  key: POSTGRES_HOST
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: ignitabull-secrets
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: ignitabull-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ignitabull-secrets
+                  key: POSTGRES_PASSWORD
+            - name: BACKUP_DIR
+              value: "/backups"
+            - name: RETENTION_DAYS
+              value: "30"
+            - name: S3_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: ignitabull-secrets
+                  key: S3_BACKUP_BUCKET
+                  optional: true
+            - name: BACKUP_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ignitabull-secrets
+                  key: BACKUP_ENCRYPTION_KEY
+                  optional: true
+            - name: BACKUP_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ignitabull-secrets
+                  key: BACKUP_WEBHOOK_URL
+                  optional: true
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: ignitabull-secrets
+                  key: AWS_ACCESS_KEY_ID
+                  optional: true
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ignitabull-secrets
+                  key: AWS_SECRET_ACCESS_KEY
+                  optional: true
+            - name: AWS_DEFAULT_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: ignitabull-secrets
+                  key: AWS_DEFAULT_REGION
+                  optional: true
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backups
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "100m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: backup-pvc
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ignitabull-neo4j-backup
+  namespace: ignitabull
+  labels:
+    app: ignitabull-backup
+    component: graph
+spec:
+  # Run daily at 3 AM UTC (after PostgreSQL backup)
+  schedule: "0 3 * * *"
+  timezone: "UTC"
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  successfulJobsHistoryLimit: 3
+  startingDeadlineSeconds: 300
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: ignitabull-backup
+            component: neo4j
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: neo4j-backup
+            image: neo4j:5-community
+            command:
+            - /bin/bash
+            - -c
+            - |
+              # Install required tools
+              apt-get update && apt-get install -y curl awscli openssl gzip findutils
+              
+              # Download backup script
+              curl -o /tmp/backup-neo4j.sh https://raw.githubusercontent.com/your-org/ignitabull/main/scripts/backup-neo4j.sh
+              chmod +x /tmp/backup-neo4j.sh
+              
+              # Run backup
+              /tmp/backup-neo4j.sh
+            env:
+            - name: NEO4J_URI
+              valueFrom:
+                secretKeyRef:
+                  name: ignitabull-secrets
+                  key: NEO4J_URI
+            - name: NEO4J_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: ignitabull-secrets
+                  key: NEO4J_USERNAME
+            - name: NEO4J_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ignitabull-secrets
+                  key: NEO4J_PASSWORD
+            - name: NEO4J_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: ignitabull-secrets
+                  key: NEO4J_DATABASE
+                  optional: true
+            - name: BACKUP_DIR
+              value: "/backups"
+            - name: RETENTION_DAYS
+              value: "30"
+            - name: S3_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: ignitabull-secrets
+                  key: S3_BACKUP_BUCKET
+                  optional: true
+            - name: BACKUP_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ignitabull-secrets
+                  key: BACKUP_ENCRYPTION_KEY
+                  optional: true
+            - name: BACKUP_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ignitabull-secrets
+                  key: BACKUP_WEBHOOK_URL
+                  optional: true
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: ignitabull-secrets
+                  key: AWS_ACCESS_KEY_ID
+                  optional: true
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ignitabull-secrets
+                  key: AWS_SECRET_ACCESS_KEY
+                  optional: true
+            - name: AWS_DEFAULT_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: ignitabull-secrets
+                  key: AWS_DEFAULT_REGION
+                  optional: true
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backups
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "200m"
+              limits:
+                memory: "1Gi"
+                cpu: "500m"
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: backup-pvc
+
+---
+# Persistent Volume Claim for backup storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backup-pvc
+  namespace: ignitabull
+  labels:
+    app: ignitabull-backup
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: fast-ssd

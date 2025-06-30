@@ -1,0 +1,71 @@
+<brief>
+    <meta>
+        <version>1.1</version>
+        <author>Project Manager</author>
+        <target_agent>Claude</target_agent>
+        <creation_date>2025-06-29</creation_date>
+        <project>Ignitabull</project>
+        <objective>Remediate critical issues in the Phase 1 implementation. The work was not acceptable. Do not proceed to new features.</objective>
+    </meta>
+
+    <directives>
+        <critical_notice>
+            Your Phase 1 submission was unsatisfactory. You failed to adhere to fundamental instructions regarding project structure and code quality. This is a formal notice to improve performance. Your task is to fix the following issues precisely as described. Do not argue or deviate. Confirm you have understood and then execute.
+        </critical_notice>
+    </directives>
+
+    <remediation_plan>
+        <issue id="R1" name="Incorrect Project Structure">
+            <description>You placed all new and modified files inside the nested `ignitabull-monorepo/ignitabull-monorepo` directory. You were explicitly told that this structure was flattened. This is a critical failure.</description>
+            <tasks>
+                <task id="R1.1">Move all files and directories from `ignitabull-monorepo/ignitabull-monorepo/*` to `ignitabull-monorepo/*`.</task>
+                <task id="R1.2">Delete the now-empty `ignitabull-monorepo/ignitabull-monorepo` directory.</task>
+                <task id="R1.3">Verify that all paths in your code and configurations are correct after the move.</task>
+            </tasks>
+            <acceptance_criteria>
+                - The `ignitabull-monorepo/ignitabull-monorepo` directory no longer exists.
+                - All application code (`apps`, `packages`, etc.) resides directly under `ignitabull-monorepo/`.
+            </acceptance_criteria>
+        </issue>
+
+        <issue id="R2" name="Inconsistent Authentication Logic">
+            <description>You created a `SupabaseAuthService` but did not use it in the frontend components. Instead, you used a separate `useAuthContext`. This is unacceptable. We will have a single source of truth.</description>
+            <tasks>
+                <task id="R2.1">Delete the `auth-client` library/directory (`apps/web/src/lib/auth-client`).</task>
+                <task id="R2.2">Refactor all authentication pages (`signin`, `signup`, `profile`, etc.) to directly import and use the `authService` instance from `@ignitabull/core/src/services/supabase-auth-service.ts`.</task>
+                <task id="R2.3">Create a new, simple React context provider (`AuthProvider`) in `apps/web/src/lib/` that provides the `user` object and `isLoading` state. This provider will use the `authService` to get the user and listen for auth state changes. It should NOT contain any data-fetching logic like `signIn` or `signUp`.</task>
+            </tasks>
+            <acceptance_criteria>
+                - The `useAuthContext` hook is gone.
+                - All UI components call methods on the `authService` directly (e.g., `authService.signIn(...)`).
+                - The new `AuthProvider` only manages user state, not authentication actions.
+            </acceptance_criteria>
+        </issue>
+
+        <issue id="R3" name="Schema and Data Mismatch">
+            <description>The data sent from the sign-up form does not match the schema in the auth service. The form collects `firstName` and `lastName`, but the service expects `fullName`.</description>
+            <tasks>
+                <task id="R3.1">In `signup/page.tsx`, combine `firstName` and `lastName` into a single `fullName` field before calling the `signUp` method.</task>
+                <task id="R3.2">Update the `SignUpData` Zod schema in `supabase-auth-service.ts` to reflect this change. It should expect `fullName`.</task>
+            </tasks>
+            <acceptance_criteria>
+                - The sign-up form correctly passes a `fullName` string to the `authService`.
+                - The `handle_new_user` SQL function receives the correct data and populates the `profiles` table.
+            </acceptance_criteria>
+        </issue>
+        
+        <issue id="R4" name="Provide Missing Code">
+            <description>You failed to provide the code for the `auth-client` library in your report. This prevented a full review.</description>
+            <tasks>
+                <task id="R4.1">As part of your work report for these fixes, you will provide the full code for the new `AuthProvider` you create.</task>
+            </tasks>
+            <acceptance_criteria>
+                - Your next work report is complete and includes all new files.
+            </acceptance_criteria>
+        </issue>
+    </remediation_plan>
+
+    <validation>
+        <instruction>Upon completion of these fixes, you will update your previous work report. Name it `phase1_remediation_report.md` and place it in the correct directory: `/claude_work_reports`. I will validate every single fix. Do not mark this as complete until you have verified that the application builds and the authentication flow works correctly from end to end.</instruction>
+    </validation>
+</brief>

@@ -6,30 +6,38 @@
 		"dev": "next dev --turbopack",
 		"build": "next build",
 		"start": "next start",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage",
 		"db:push": "drizzle-kit push",
 		"db:studio": "drizzle-kit studio",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "drizzle-kit migrate"
 	},
 	"dependencies": {
-		"next": "15.3.0",
-		"dotenv": "^16.5.0",
-		"@trpc/server": "^11.4.2",
+		"@ai-sdk/google": "^1.2.3",
 		"@trpc/client": "^11.4.2",
-		"drizzle-orm": "^0.44.2",
-		"pg": "^8.14.1",
+		"@trpc/server": "^11.4.2",
 		"ai": "^4.3.16",
-		"@ai-sdk/google": "^1.2.3"
+		"dotenv": "^16.5.0",
+		"drizzle-orm": "^0.44.2",
+		"neo4j-driver": "^5.28.1",
+		"next": "15.3.0",
+		"pg": "^8.14.1",
+		"express": "^4.21.2",
+		"zod": "^3.23.8"
 	},
 	"trustedDependencies": [
 		"supabase"
 	],
 	"devDependencies": {
-		"@types/node": "^20",
-		"@types/react": "^19",
-		"typescript": "^5",
 		"@types/bun": "^1.2.6",
+		"@types/express": "^5.0.0",
+		"@types/node": "^20",
+		"@types/pg": "^8.11.11",
+		"@types/react": "^19",
 		"drizzle-kit": "^0.31.2",
-		"@types/pg": "^8.11.11"
+		"typescript": "^5",
+		"vitest": "^2.1.8"
 	}
 }

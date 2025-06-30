@@ -1,0 +1,159 @@
+# Server application deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ignitabull-server
+  namespace: ignitabull
+  labels:
+    app: ignitabull-server
+    component: backend
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: ignitabull-server
+  template:
+    metadata:
+      labels:
+        app: ignitabull-server
+        component: backend
+    spec:
+      containers:
+      - name: server
+        image: ghcr.io/your-org/ignitabull/server:latest
+        ports:
+        - containerPort: 3001
+          name: http
+        env:
+        - name: NODE_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: ignitabull-config
+              key: NODE_ENV
+        - name: PORT
+          value: "3001"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: ignitabull-secrets
+              key: DATABASE_URL
+        - name: NEO4J_URI
+          valueFrom:
+            secretKeyRef:
+              name: ignitabull-secrets
+              key: NEO4J_URI
+        - name: NEO4J_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: ignitabull-secrets
+              key: NEO4J_USERNAME
+        - name: NEO4J_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ignitabull-secrets
+              key: NEO4J_PASSWORD
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: ignitabull-secrets
+              key: REDIS_URL
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: ignitabull-secrets
+              key: JWT_SECRET
+        - name: RESEND_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ignitabull-secrets
+              key: RESEND_API_KEY
+        - name: SUPABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: ignitabull-secrets
+              key: SUPABASE_URL
+        - name: SUPABASE_ANON_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ignitabull-secrets
+              key: SUPABASE_ANON_KEY
+        - name: SUPABASE_SERVICE_ROLE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ignitabull-secrets
+              key: SUPABASE_SERVICE_ROLE_KEY
+        - name: AMAZON_SP_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: ignitabull-secrets
+              key: AMAZON_SP_CLIENT_ID
+        - name: AMAZON_SP_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: ignitabull-secrets
+              key: AMAZON_SP_CLIENT_SECRET
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ignitabull-secrets
+              key: OPENAI_API_KEY
+        - name: ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ignitabull-secrets
+              key: ANTHROPIC_API_KEY
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "1000m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 3001
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 3001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1001
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      securityContext:
+        fsGroup: 1001
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ignitabull-server-service
+  namespace: ignitabull
+  labels:
+    app: ignitabull-server
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 3001
+    protocol: TCP
+    name: http
+  selector:
+    app: ignitabull-server

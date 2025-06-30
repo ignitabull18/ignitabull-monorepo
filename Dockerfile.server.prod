@@ -1,0 +1,78 @@
+# Multi-stage Docker build for Express Server
+# Optimized for production deployment
+
+# Stage 1: Dependencies
+FROM node:18-alpine AS deps
+WORKDIR /app
+
+# Install build dependencies
+RUN apk add --no-cache libc6-compat
+
+# Copy package files
+COPY package.json bun.lockb ./
+COPY apps/server/package.json ./apps/server/
+COPY packages/core/package.json ./packages/core/
+COPY packages/ui/package.json ./packages/ui/
+COPY packages/config/package.json ./packages/config/
+
+# Install dependencies using Bun
+RUN npm install -g bun
+RUN bun install --production
+
+# Stage 2: Builder
+FROM node:18-alpine AS builder
+WORKDIR /app
+
+# Install Bun and TypeScript
+RUN npm install -g bun typescript
+
+# Copy dependencies
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# Build shared packages first
+RUN bun run build --filter=@ignitabull/core
+RUN bun run build --filter=@ignitabull/ui
+RUN bun run build --filter=@ignitabull/config
+
+# Stage 3: Production Runner
+FROM node:18-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    curl \
+    dumb-init \
+    && rm -rf /var/cache/apk/*
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 serverjs
+
+# Install Bun for production runtime
+RUN npm install -g bun
+
+# Copy the entire built workspace
+COPY --from=builder --chown=serverjs:nodejs /app ./
+
+# Remove dev dependencies and reinstall only production
+RUN bun install --production
+
+USER serverjs
+
+EXPOSE 3001
+
+ENV PORT=3001
+ENV HOSTNAME="0.0.0.0"
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD curl -f http://localhost:3001/health || exit 1
+
+# Use dumb-init for proper signal handling
+ENTRYPOINT ["dumb-init", "--"]
+
+# Start the Express server
+CMD ["bun", "run", "apps/server/src/index.ts"]

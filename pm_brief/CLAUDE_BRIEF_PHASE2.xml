@@ -1,0 +1,88 @@
+<brief>
+    <meta>
+        <version>2.0</version>
+        <author>Project Manager</author>
+        <target_agent>Claude</target_agent>
+        <creation_date>2025-06-30</creation_date>
+        <project>Ignitabull</project>
+        <objective>Execute Phase 2 of the Ignitabull MVP development: The Dashboard and First Integration.</objective>
+    </meta>
+
+    <directives>
+        <praise>
+            Your remediation of the Phase 1 issues was excellent. You followed instructions precisely and the resulting code is clean and correct. This is the standard of quality I expect. Maintain this level of performance.
+        </praise>
+        <style_guide>
+            - Continue to adhere to all established style guides and conventions.
+            - All new UI components must be responsive and include loading and error states.
+            - All new API interactions must be handled through a dedicated service class in the `packages/core/src/services` directory.
+        </style_guide>
+    </directives>
+
+    <execution_plan>
+        <phase id="2" name="Dashboard &amp; Amazon Integration">
+            <objective>Build the main dashboard layout and implement the first data integration with the Amazon Selling Partner API (SP-API). This will provide the first real value to our users.</objective>
+            <tasks>
+                <task id="2.1" name="Create Dashboard Layout">
+                    <description>Build the primary dashboard UI. This will be the main view for authenticated users. It should be a responsive grid where widgets will be placed later.</description>
+                    <scope>
+                        - A new page at `/dashboard`.
+                        - A responsive grid layout component.
+                        - A placeholder "Welcome" widget that displays the user's name.
+                        - A top navigation bar that includes the user's profile avatar and a sign-out button.
+                    </scope>
+                    <acceptance_criteria>
+                        - The `/dashboard` route is protected and only accessible to authenticated users.
+                        - The layout is responsive and functions correctly on mobile and desktop screens.
+                        - The user's name is displayed in the welcome widget.
+                    </acceptance_criteria>
+                </task>
+                <task id="2.2" name="Implement Amazon SP-API Integration Service">
+                    <description>Create a new service to handle all interactions with the Amazon SP-API. This service will be responsible for authentication and data fetching.</description>
+                    <scope>
+                        - A new file: `packages/core/src/services/amazon-sp-api-service.ts`.
+                        - The service should handle the OAuth 2.0 flow for connecting a seller's account.
+                        - Implement a method to fetch a list of orders for a given date range.
+                        - Store Amazon credentials securely. Use the `integrations` table you created in Phase 1. Encrypt sensitive credentials before storing them.
+                    </scope>
+                    <acceptance_criteria>
+                        - A new `AmazonSPAPIService` class is created.
+                        - The service includes methods for the OAuth flow and for fetching orders.
+                        - Credentials are encrypted and stored in the `integrations` table.
+                    </acceptance_criteria>
+                </task>
+                <task id="2.3" name="Create Integration Management UI">
+                    <description>Build the UI for users to connect their Amazon Seller Central account to Ignitabull.</description>
+                    <scope>
+                        - A new page at `/settings/integrations`.
+                        - A button to "Connect Amazon Account" that initiates the OAuth flow from the `AmazonSPAPIService`.
+                        - A view that shows the status of the Amazon integration (connected or disconnected).
+                        - A button to disconnect the integration, which revokes the token and deletes the credentials.
+                    </scope>
+                    <acceptance_criteria>
+                        - Users can successfully connect their Amazon account.
+                        - The connection status is accurately reflected in the UI.
+                        - Users can disconnect their account.
+                    </acceptance_criteria>
+                </task>
+                <task id="2.4" name="Display Amazon Orders on Dashboard">
+                    <description>Create a new dashboard widget that displays a list of recent orders from the connected Amazon account.</description>
+                    <scope>
+                        - A new "Recent Orders" widget component.
+                        - The widget should use the `AmazonSPAPIService` to fetch the 10 most recent orders.
+                        - Display the Order ID, Purchase Date, and Total Amount for each order in a simple table.
+                        - Include appropriate loading and error states (e.g., a message prompting the user to connect their Amazon account if they haven't).
+                    </scope>
+                    <acceptance_criteria>
+                        - If the user has connected their Amazon account, the widget displays their recent orders.
+                        - If the account is not connected, a message prompts them to connect it.
+                        - The widget handles loading and error states gracefully.
+                    </acceptance_criteria>
+                </task>
+            </tasks>
+            <validation>
+                <instruction>Upon completion of this phase, create a new work report named `phase2_dashboard_report.md` in the `/claude_work_reports` directory. The report must detail the implementation of each task and include paths to all new and modified files. I will be validating the end-to-end flow, from connecting an Amazon account to seeing orders on the dashboard.</instruction>
+            </validation>
+        </phase>
+    </execution_plan>
+</brief>
