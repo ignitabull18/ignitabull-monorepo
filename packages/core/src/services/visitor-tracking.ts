@@ -54,8 +54,8 @@ export class VisitorTrackingService {
 	private rules: FollowUpRule[] = [];
 	private isInitialized = false;
 
-	constructor(config: TrackingConfiguration) {
-		this.config = config;
+	constructor(_config: TrackingConfiguration) {
+		this.config = _config;
 	}
 
 	async initialize(): Promise<void> {
@@ -339,8 +339,8 @@ export class VisitorTrackingService {
 	): Promise<boolean> {
 		switch (trigger.type) {
 			case "page_visit":
-				return pageView
-					? this.matchesPattern(pageView.path, trigger.value, trigger.operator)
+				return pageView && trigger.value !== undefined
+					? this.matchesPattern(pageView.path, String(trigger.value), trigger.operator)
 					: false;
 
 			case "time_on_site": {
@@ -515,7 +515,7 @@ export class VisitorTrackingService {
 		if (!session) return [];
 
 		const insights: VisitorInsight[] = [];
-		const _pageViews = await this.getSessionPageViews(sessionId);
+		// const _pageViews = await this.getSessionPageViews(sessionId);
 		const interactions = await this.getSessionInteractions(sessionId);
 
 		// Analyze behavior patterns
@@ -678,9 +678,9 @@ export class VisitorTrackingService {
 			case "not_equals":
 				return actual !== expected;
 			case "greater_than":
-				return actual > expected;
+				return Number(actual) > Number(expected);
 			case "less_than":
-				return actual < expected;
+				return Number(actual) < Number(expected);
 			case "contains":
 				return String(actual).includes(String(expected));
 			case "in":

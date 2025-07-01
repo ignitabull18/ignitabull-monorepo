@@ -2,13 +2,13 @@
  * Test utilities and helpers
  */
 
-import type { AuthSession, AuthUser } from "@ignitabull/core";
+// import type { AuthSession, AuthUser } from "@ignitabull/core";
 import { vi } from "vitest";
 
 /**
  * Create mock user for testing
  */
-export function createMockUser(overrides: Partial<AuthUser> = {}): AuthUser {
+export function createMockUser(overrides: any = {}): any {
 	return {
 		id: "test-user-id",
 		email: "test@example.com",
@@ -27,8 +27,8 @@ export function createMockUser(overrides: Partial<AuthUser> = {}): AuthUser {
  * Create mock auth session for testing
  */
 export function createMockSession(
-	userOverrides: Partial<AuthUser> = {},
-): AuthSession {
+	userOverrides: any = {},
+): any {
 	return {
 		user: createMockUser(userOverrides),
 		accessToken: "test-access-token",
