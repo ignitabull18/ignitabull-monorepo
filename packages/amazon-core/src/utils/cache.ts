@@ -26,16 +26,18 @@ export class MemoryCache<T = any> implements Cache<T> {
 	private readonly config: CacheConfig;
 	private cleanupTimer?: NodeJS.Timeout;
 
-	constructor(config: CacheConfig = { defaultTTL: 300, maxSize: 1000 }) {
+	constructor(
+		config: CacheConfig = {
+			enabled: true,
+			ttl: 300,
+			maxSize: 1000,
+			keyPrefix: "amazon_api",
+		},
+	) {
 		this.config = config;
 
-		// Cleanup expired entries periodically
-		if (config.cleanupInterval) {
-			this.cleanupTimer = setInterval(
-				() => this.cleanup(),
-				config.cleanupInterval * 1000,
-			);
-		}
+		// Cleanup expired entries periodically (every 60 seconds)
+		this.cleanupTimer = setInterval(() => this.cleanup(), 60 * 1000);
 	}
 
 	async get(key: string): Promise<T | undefined> {
@@ -54,6 +56,24 @@ export class MemoryCache<T = any> implements Cache<T> {
 		return entry.value;
 	}
 
+	/**
+	 * Get value from cache or compute and store it
+	 */
+	async getOrCompute(
+		key: string,
+		computeFn: () => Promise<T>,
+		ttl?: number,
+	): Promise<T> {
+		const cached = await this.get(key);
+		if (cached !== undefined) {
+			return cached;
+		}
+
+		const value = await computeFn();
+		await this.set(key, value, ttl);
+		return value;
+	}
+
 	async set(key: string, value: T, ttl?: number): Promise<void> {
 		// Apply size limit
 		if (this.config.maxSize && this.store.size >= this.config.maxSize) {
@@ -64,7 +84,7 @@ export class MemoryCache<T = any> implements Cache<T> {
 			}
 		}
 
-		const expiry = Date.now() + (ttl || this.config.defaultTTL) * 1000;
+		const expiry = Date.now() + (ttl || this.config.ttl) * 1000;
 		this.store.set(key, { value, expires: expiry });
 	}
 
@@ -96,6 +116,18 @@ export class MemoryCache<T = any> implements Cache<T> {
 	async keys(): Promise<string[]> {
 		this.cleanup();
 		return Array.from(this.store.keys());
+	}
+
+	/**
+	 * Clear cache entries matching a pattern
+	 */
+	clearPattern(pattern: string): void {
+		const regex = new RegExp(pattern.replace(/\*/g, ".*"));
+		for (const key of this.store.keys()) {
+			if (regex.test(key)) {
+				this.store.delete(key);
+			}
+		}
 	}
 
 	private cleanup(): void {
@@ -232,8 +264,10 @@ export class MultiLevelCache<T = any> implements Cache<T> {
 		} = {},
 	) {
 		this.l1Cache = new MemoryCache<T>({
-			defaultTTL: config.l1TTL || 60,
+			enabled: true,
+			ttl: config.l1TTL || 60,
 			maxSize: config.l1MaxSize || 500,
+			keyPrefix: "amazon_api",
 		});
 		this.l2Cache = l2Cache;
 		this.config = {
@@ -446,7 +480,7 @@ export class CacheManager {
 			useRedis?: boolean;
 			redisClient?: any;
 			memoryMaxSize?: number;
-			defaultTTL?: number;
+			ttl?: number;
 		} = {},
 	): CacheManager {
 		const manager = new CacheManager();
@@ -457,15 +491,16 @@ export class CacheManager {
 			const multiCache = new MultiLevelCache(redisCache, {
 				l1MaxSize: options.memoryMaxSize || 500,
 				l1TTL: 60,
-				l2TTL: options.defaultTTL || 3600,
+				l2TTL: options.ttl || 3600,
 			});
 			manager.register("default", multiCache);
 		} else {
 			// Use memory cache only
 			const memoryCache = new MemoryCache({
+				enabled: true,
+				ttl: options.ttl || 300,
 				maxSize: options.memoryMaxSize || 1000,
-				defaultTTL: options.defaultTTL || 300,
-				cleanupInterval: 60,
+				keyPrefix: "amazon_api",
 			});
 			manager.register("default", memoryCache);
 		}

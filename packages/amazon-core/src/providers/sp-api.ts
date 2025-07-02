@@ -3,18 +3,14 @@
  * Following AI SDK provider patterns
  */
 
-import {
-	AmazonAPIError,
-	AmazonError,
-	AmazonRateLimitError,
-} from "../errors/base";
+import { SPAPIError, SPAPIRateLimitError } from "../errors/api-errors";
+import { AmazonConfigError } from "../errors/base";
 import { NetworkErrorFactory } from "../errors/network-errors";
+import type { SPAPIConfig } from "../types/config";
 import type {
 	APIResponse,
-	BaseAmazonProvider,
 	SPAPIProvider as ISPAPIProvider,
 	RequestOptions,
-	SPAPIConfig,
 } from "../types/provider";
 import type {
 	SPAPICatalogItem,
@@ -57,7 +53,7 @@ const SP_API_RATE_LIMITS = {
 /**
  * Amazon SP-API provider implementation
  */
-export class SPAPIProvider implements ISPAPIProvider, BaseAmazonProvider {
+export class SPAPIProvider implements ISPAPIProvider {
 	readonly providerId = "sp-api";
 	readonly name = "Amazon Selling Partner API";
 	readonly version = "2021-06-30";
@@ -88,8 +84,10 @@ export class SPAPIProvider implements ISPAPIProvider, BaseAmazonProvider {
 
 		// Initialize cache
 		this.cache = new MemoryCache({
-			defaultTTL: config.cache?.defaultTTL || 300,
+			enabled: true,
+			ttl: config.cache?.ttl || 300,
 			maxSize: config.cache?.maxSize || 1000,
+			keyPrefix: "amazon_sp_api",
 		});
 
 		this.logger.info("SP-API provider initialized", {
@@ -105,7 +103,7 @@ export class SPAPIProvider implements ISPAPIProvider, BaseAmazonProvider {
 			// Validate credentials
 			const isValid = await this.authProvider.validateCredentials();
 			if (!isValid) {
-				throw new AmazonError("Invalid SP-API credentials");
+				throw new AmazonConfigError("Invalid SP-API credentials");
 			}
 
 			// Initialize rate limiters for known endpoints
@@ -242,7 +240,10 @@ export class SPAPIProvider implements ISPAPIProvider, BaseAmazonProvider {
 
 	async getOrder(orderId: string): Promise<SPAPIOrder> {
 		if (!orderId) {
-			throw new AmazonError("Order ID is required");
+			throw new SPAPIError("Order ID is required", {
+				code: "INVALID_ORDER_ID",
+				retryable: false,
+			});
 		}
 
 		const response = await this.request<{ payload: SPAPIOrder }>(
@@ -457,7 +458,10 @@ export class SPAPIProvider implements ISPAPIProvider, BaseAmazonProvider {
 
 	async getReport(reportId: string): Promise<SPAPIReport> {
 		if (!reportId) {
-			throw new AmazonError("Report ID is required");
+			throw new SPAPIError("Report ID is required", {
+				code: "INVALID_REPORT_ID",
+				retryable: false,
+			});
 		}
 
 		const response = await this.request<SPAPIReport>(
@@ -535,7 +539,9 @@ export class SPAPIProvider implements ISPAPIProvider, BaseAmazonProvider {
 		options: RequestOptions = {},
 		requestId?: string,
 	): Promise<APIResponse<T>> {
-		const baseUrl = SP_API_ENDPOINTS[this.config.region];
+		const baseUrl =
+			SP_API_ENDPOINTS[this.config.region as keyof typeof SP_API_ENDPOINTS] ||
+			SP_API_ENDPOINTS["us-east-1"];
 		const url = `${baseUrl}${path}`;
 
 		this.logger.logRequest("sp-api", path, method, requestId);
@@ -576,30 +582,29 @@ export class SPAPIProvider implements ISPAPIProvider, BaseAmazonProvider {
 			if (!response.ok) {
 				if (response.status === 429) {
 					const retryAfter = response.headers.get("retry-after");
-					throw new AmazonRateLimitError(
-						url,
-						response.status,
-						response.statusText,
+					throw new SPAPIRateLimitError(
+						`Rate limit exceeded: ${response.statusText}`,
 						retryAfter ? Number.parseInt(retryAfter) : undefined,
+						requestId,
 					);
 				}
 
-				throw new AmazonAPIError(
-					`SP-API request failed: ${response.statusText}`,
-					response.status,
-					responseText,
-					{ provider: "sp-api", endpoint: path },
-				);
+				throw new SPAPIError(`SP-API request failed: ${response.statusText}`, {
+					code: `HTTP_${response.status}`,
+					statusCode: response.status,
+					requestId,
+					retryable: response.status >= 500,
+				});
 			}
 
 			return {
 				data,
 				statusCode: response.status,
 				statusText: response.statusText,
-				headers: Object.fromEntries(response.headers.entries()),
+				headers: {},
 			};
 		} catch (error) {
-			if (error instanceof AmazonError) {
+			if (error instanceof SPAPIError) {
 				throw error;
 			}
 
@@ -638,6 +643,8 @@ export class SPAPIProvider implements ISPAPIProvider, BaseAmazonProvider {
 				new RateLimiter({
 					requestsPerSecond: config.requestsPerSecond,
 					burstLimit: config.burstLimit,
+					backoffMultiplier: 2,
+					maxBackoffTime: 60000,
 					jitter: true,
 				}),
 			);

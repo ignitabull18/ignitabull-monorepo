@@ -199,7 +199,7 @@ export class MultipleValidationError extends AmazonError {
 /**
  * Validation utilities
  */
-export class ValidationUtils {
+export class ValidationErrorUtils {
 	/**
 	 * Validate ASIN format
 	 */

@@ -85,16 +85,21 @@ export class EnvironmentLoader {
 			),
 			burstLimit: Number.parseInt(process.env.AMAZON_BURST_LIMIT || "10"),
 			jitter: process.env.AMAZON_RATE_LIMIT_JITTER !== "false",
+			backoffMultiplier: Number.parseFloat(
+				process.env.AMAZON_BACKOFF_MULTIPLIER || "2",
+			),
+			maxBackoffTime: Number.parseInt(
+				process.env.AMAZON_MAX_BACKOFF_TIME || "60000",
+			),
 		};
 	}
 
 	static loadCacheConfig(): CacheConfig {
 		return {
-			defaultTTL: Number.parseInt(process.env.AMAZON_CACHE_TTL || "300"),
+			enabled: process.env.AMAZON_CACHE_ENABLED !== "false",
+			ttl: Number.parseInt(process.env.AMAZON_CACHE_TTL || "300"),
 			maxSize: Number.parseInt(process.env.AMAZON_CACHE_MAX_SIZE || "1000"),
-			cleanupInterval: Number.parseInt(
-				process.env.AMAZON_CACHE_CLEANUP || "60",
-			),
+			keyPrefix: process.env.AMAZON_CACHE_PREFIX || "amazon_api",
 		};
 	}
 
@@ -579,9 +584,12 @@ export class ConfigUtils {
 					!Array.isArray(value) &&
 					value !== null
 				) {
-					result[key] = ConfigUtils.deepMerge(result[key] || {}, value);
+					result[key] = ConfigUtils.deepMerge(
+						result[key] || {},
+						value,
+					) as T[Extract<keyof T, string>];
 				} else {
-					result[key] = value;
+					result[key] = value as T[Extract<keyof T, string>];
 				}
 			}
 		}
@@ -592,7 +600,7 @@ export class ConfigUtils {
 	/**
 	 * Create configuration from environment with defaults
 	 */
-	static fromEnvironment<T>(
+	static fromEnvironment<T extends Record<string, any>>(
 		loader: () => Partial<T>,
 		defaults: T,
 		validator?: (config: T) => ConfigValidationResult,
@@ -636,10 +644,15 @@ export class ConfigUtils {
 			if (typeof value === "string") {
 				const lowerKey = key.toLowerCase();
 				if (sensitiveKeys.some((sensitive) => lowerKey.includes(sensitive))) {
-					redacted[key] = value.length > 0 ? "***REDACTED***" : value;
+					redacted[key] = (
+						value.length > 0 ? "***REDACTED***" : value
+					) as T[Extract<keyof T, string>];
 				}
 			} else if (typeof value === "object" && value !== null) {
-				redacted[key] = ConfigUtils.redact(value);
+				redacted[key] = ConfigUtils.redact(value) as T[Extract<
+					keyof T,
+					string
+				>];
 			}
 		}
 

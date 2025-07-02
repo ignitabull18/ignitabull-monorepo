@@ -1,6 +1,23 @@
 "use client";
 
-import { authService } from "@ignitabull/core/services/supabase-auth-service";
+import { createClient } from "@supabase/supabase-js";
+
+// Initialize Supabase client
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// Create auth service wrapper
+const authService = {
+  getSession: async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session;
+  },
+  onAuthStateChange: (callback: (event: any, session: Session | null) => void) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(callback);
+    return subscription.unsubscribe;
+  }
+};
 import type { Session, User } from "@supabase/supabase-js";
 import type React from "react";
 import { createContext, useContext, useEffect, useState } from "react";

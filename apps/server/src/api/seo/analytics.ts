@@ -4,7 +4,7 @@
  */
 
 import type { Request, Response } from "express";
-import { SEOAnalyticsService } from "../../../../packages/core/src/services/seo-analytics";
+import { SEOAnalyticsService } from "@ignitabull/core";
 import SEORepository from "../../services/seo-repository";
 
 const repository = new SEORepository();

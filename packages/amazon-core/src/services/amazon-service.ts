@@ -29,7 +29,7 @@ import type {
 } from "../types/config";
 import type { SPAPICatalogItem } from "../types/sp-api";
 import { MemoryCache } from "../utils/cache";
-import { ConfigManager, ConfigUtils } from "../utils/config";
+// import { ConfigManager } from "../utils/config"; // Reserved for future use
 import { createProviderLogger } from "../utils/logger";
 import { BrandIntelligenceService } from "./brand-intelligence";
 import { CampaignManager } from "./campaign-manager";
@@ -166,8 +166,13 @@ export interface MarketplaceInsights {
  */
 export class AmazonService {
 	private readonly logger = createProviderLogger("amazon-service");
-	private readonly cache = new MemoryCache({ defaultTTL: 300, maxSize: 2000 });
-	private readonly configManager = ConfigManager.getInstance();
+	private readonly cache = new MemoryCache({
+		enabled: true,
+		ttl: 300,
+		maxSize: 2000,
+		keyPrefix: "amazon_service",
+	});
+	// private readonly configManager = ConfigManager.getInstance(); // Reserved for future use
 
 	private spApiProvider?: SPAPIProvider;
 	private advertisingProvider?: AdvertisingProvider;
@@ -207,11 +212,7 @@ export class AmazonService {
 
 			// Initialize SP-API provider
 			if (providers.includes("sp-api") && this.config.spApi) {
-				const spApiConfig = ConfigUtils.merge(
-					this.config.spApi,
-					this.config.globalConfig || {},
-				);
-				this.spApiProvider = new SPAPIProvider(spApiConfig);
+				this.spApiProvider = new SPAPIProvider(this.config.spApi);
 				await this.spApiProvider.initialize();
 				this.enabledProviders.add("sp-api");
 				this.logger.info("SP-API provider initialized");
@@ -219,11 +220,9 @@ export class AmazonService {
 
 			// Initialize Advertising provider
 			if (providers.includes("advertising") && this.config.advertising) {
-				const advertisingConfig = ConfigUtils.merge(
+				this.advertisingProvider = new AdvertisingProvider(
 					this.config.advertising,
-					this.config.globalConfig || {},
 				);
-				this.advertisingProvider = new AdvertisingProvider(advertisingConfig);
 				await this.advertisingProvider.initialize();
 				this.enabledProviders.add("advertising");
 				this.logger.info("Advertising provider initialized");
@@ -231,11 +230,9 @@ export class AmazonService {
 
 			// Initialize Associates provider
 			if (providers.includes("associates") && this.config.associates) {
-				const associatesConfig = ConfigUtils.merge(
+				this.associatesProvider = new AssociatesProvider(
 					this.config.associates,
-					this.config.globalConfig || {},
 				);
-				this.associatesProvider = new AssociatesProvider(associatesConfig);
 				await this.associatesProvider.initialize();
 				this.enabledProviders.add("associates");
 				this.logger.info("Associates provider initialized");
@@ -243,12 +240,8 @@ export class AmazonService {
 
 			// Initialize Brand Analytics provider
 			if (providers.includes("brand-analytics") && this.config.brandAnalytics) {
-				const brandAnalyticsConfig = ConfigUtils.merge(
-					this.config.brandAnalytics,
-					this.config.globalConfig || {},
-				);
 				this.brandAnalyticsProvider = new BrandAnalyticsProvider(
-					brandAnalyticsConfig,
+					this.config.brandAnalytics,
 				);
 				await this.brandAnalyticsProvider.initialize();
 				this.enabledProviders.add("brand-analytics");
@@ -268,11 +261,7 @@ export class AmazonService {
 
 			// Initialize DSP provider
 			if (providers.includes("dsp") && this.config.dsp) {
-				const dspConfig = ConfigUtils.merge(
-					this.config.dsp,
-					this.config.globalConfig || {},
-				);
-				this.dspProvider = new DSPProvider(dspConfig);
+				this.dspProvider = new DSPProvider(this.config.dsp);
 				await this.dspProvider.initialize();
 				this.enabledProviders.add("dsp");
 				this.logger.info("DSP provider initialized");
@@ -676,7 +665,7 @@ export class AmazonService {
 			case "brand-analytics":
 				return this.brandAnalyticsProvider as any;
 			default:
-				return undefined;
+				return undefined as any;
 		}
 	}
 
@@ -865,11 +854,10 @@ export class AmazonService {
 
 			insights.brandAnalyticsData = {
 				competitivePosition: {
-					rank: competitiveIntel.marketPosition?.rank || 0,
-					marketShare: competitiveIntel.marketPosition?.marketShare || 0,
-					threats: competitiveIntel.threats?.map((t) => t.description) || [],
-					opportunities:
-						competitiveIntel.opportunities?.map((o) => o.description) || [],
+					rank: competitiveIntel.marketPosition?.overallRank || 0,
+					marketShare: 0, // Not available in the response structure
+					threats: [], // Not available in the response structure
+					opportunities: [], // Not available in the response structure
 				},
 			};
 		} catch (error) {

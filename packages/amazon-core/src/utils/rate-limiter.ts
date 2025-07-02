@@ -87,6 +87,35 @@ export class RateLimiter {
 		this.lastRefill = Date.now();
 	}
 
+	/**
+	 * Refund a token that was consumed but not used
+	 */
+	refund(): void {
+		this.tokens = Math.min(this.config.burstLimit, this.tokens + 1);
+	}
+
+	/**
+	 * Check if rate limit allows the request
+	 */
+	checkRateLimit(): boolean {
+		this.refillTokens();
+		return this.tokens >= 1;
+	}
+
+	/**
+	 * Get retry after time in milliseconds
+	 */
+	getRetryAfter(): number {
+		return this.getWaitTime();
+	}
+
+	/**
+	 * Acquire a token (alias for consume)
+	 */
+	async acquire(): Promise<boolean> {
+		return this.consume();
+	}
+
 	private refillTokens(): void {
 		const now = Date.now();
 		const timePassed = now - this.lastRefill;
@@ -126,7 +155,7 @@ export class DistributedRateLimiter {
 			const allowed = await this.storage.consume(this.key);
 			if (!allowed) {
 				// Refund the local token since distributed limit was hit
-				this.localLimiter.tokens += 1;
+				this.localLimiter.refund();
 				return false;
 			}
 			return true;
@@ -271,7 +300,7 @@ export class RedisRateLimitStorage implements RateLimitStorage {
  * Rate limiter manager for multiple APIs
  */
 export class RateLimiterManager {
-	private limiters = new Map<string, RateLimiter>();
+	private limiters = new Map<string, RateLimiter | DistributedRateLimiter>();
 	private readonly storage?: RateLimitStorage;
 
 	constructor(storage?: RateLimitStorage) {
@@ -281,14 +310,19 @@ export class RateLimiterManager {
 	/**
 	 * Get or create a rate limiter for a specific key
 	 */
-	getLimiter(key: string, config: RateLimitConfig): RateLimiter {
-		let limiter = this.limiters.get(key);
-		if (!limiter) {
-			limiter = this.storage
-				? new DistributedRateLimiter(key, config, this.storage)
-				: new RateLimiter(config);
-			this.limiters.set(key, limiter);
+	getLimiter(
+		key: string,
+		config: RateLimitConfig,
+	): RateLimiter | DistributedRateLimiter {
+		const existingLimiter = this.limiters.get(key);
+		if (existingLimiter) {
+			return existingLimiter;
 		}
+
+		const limiter = this.storage
+			? new DistributedRateLimiter(key, config, this.storage)
+			: new RateLimiter(config);
+		this.limiters.set(key, limiter);
 		return limiter;
 	}
 
@@ -310,7 +344,10 @@ export class RateLimiterManager {
 	/**
 	 * Get rate limiter for Amazon SP-API
 	 */
-	getSPAPILimiter(endpoint: string, config: RateLimitConfig): RateLimiter {
+	getSPAPILimiter(
+		endpoint: string,
+		config: RateLimitConfig,
+	): RateLimiter | DistributedRateLimiter {
 		const key = RateLimiterManager.createKey("sp-api", endpoint);
 		return this.getLimiter(key, config);
 	}
@@ -321,7 +358,7 @@ export class RateLimiterManager {
 	getAdvertisingLimiter(
 		endpoint: string,
 		config: RateLimitConfig,
-	): RateLimiter {
+	): RateLimiter | DistributedRateLimiter {
 		const key = RateLimiterManager.createKey("advertising", endpoint);
 		return this.getLimiter(key, config);
 	}
@@ -329,7 +366,10 @@ export class RateLimiterManager {
 	/**
 	 * Get rate limiter for Amazon Associates API
 	 */
-	getAssociatesLimiter(endpoint: string, config: RateLimitConfig): RateLimiter {
+	getAssociatesLimiter(
+		endpoint: string,
+		config: RateLimitConfig,
+	): RateLimiter | DistributedRateLimiter {
 		const key = RateLimiterManager.createKey("associates", endpoint);
 		return this.getLimiter(key, config);
 	}

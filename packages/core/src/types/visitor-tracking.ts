@@ -369,17 +369,4 @@ export interface UpdateVisitorLead
 export interface UpdateFollowUpRule
 	extends Partial<Omit<CreateFollowUpRule, "name">> {}
 
-export default {
-	VisitorSession,
-	PageView,
-	VisitorInteraction,
-	VisitorLead,
-	FollowUpRule,
-	FollowUpExecution,
-	VisitorSegment,
-	VisitorAnalytics,
-	TrackingConfiguration,
-	VisitorInsight,
-	EmailCampaign,
-	AutomationWorkflow,
-};
+// Type exports are handled by export interface statements above

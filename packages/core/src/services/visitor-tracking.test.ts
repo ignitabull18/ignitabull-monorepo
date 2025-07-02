@@ -8,7 +8,7 @@ import {
 	advanceTime,
 	createMockError,
 	createMockVisitorSession,
-} from "../../../../test/utils";
+} from "../../test/utils";
 import type {
 	FollowUpRule,
 	TrackingConfiguration,
@@ -267,7 +267,10 @@ describe("VisitorTrackingService", () => {
 				status: "new" as const,
 			};
 
-			const lead = await trackingService.createLead(session.sessionId, leadData);
+			const lead = await trackingService.createLead(
+				session.sessionId,
+				leadData,
+			);
 
 			expect(lead.sessionId).toBe(session.sessionId);
 			expect(lead.email).toBe("test@example.com");
@@ -381,12 +384,13 @@ describe("VisitorTrackingService", () => {
 
 			// Mock the saveFollowUpExecution method to track executions
 			const executions: any[] = [];
-			vi.spyOn(trackingService as any, "saveFollowUpExecution").mockImplementation(
-				(execution) => {
-					executions.push(execution);
-					return Promise.resolve(execution);
-				},
-			);
+			vi.spyOn(
+				trackingService as any,
+				"saveFollowUpExecution",
+			).mockImplementation((execution) => {
+				executions.push(execution);
+				return Promise.resolve(execution);
+			});
 
 			// Mock other required methods
 			vi.spyOn(trackingService as any, "saveFollowUpRule").mockResolvedValue(
@@ -397,7 +401,9 @@ describe("VisitorTrackingService", () => {
 			);
 
 			// Mock the evaluateTrigger to return true for our rule
-			vi.spyOn(trackingService as any, "evaluateTrigger").mockResolvedValue(true);
+			vi.spyOn(trackingService as any, "evaluateTrigger").mockResolvedValue(
+				true,
+			);
 			vi.spyOn(trackingService as any, "evaluateCondition").mockResolvedValue(
 				true,
 			);
@@ -453,12 +459,22 @@ describe("VisitorTrackingService", () => {
 				[],
 			);
 			vi.spyOn(trackingService as any, "getLeadsInRange").mockResolvedValue([]);
-			vi.spyOn(trackingService as any, "calculateAverageSessionDuration").mockReturnValue(63333.33);
-			vi.spyOn(trackingService as any, "calculateBounceRate").mockReturnValue(33.33);
-			vi.spyOn(trackingService as any, "calculateConversionRate").mockReturnValue(0);
+			vi.spyOn(
+				trackingService as any,
+				"calculateAverageSessionDuration",
+			).mockReturnValue(63333.33);
+			vi.spyOn(trackingService as any, "calculateBounceRate").mockReturnValue(
+				33.33,
+			);
+			vi.spyOn(
+				trackingService as any,
+				"calculateConversionRate",
+			).mockReturnValue(0);
 			vi.spyOn(trackingService as any, "getTopPages").mockReturnValue([]);
 			vi.spyOn(trackingService as any, "getTopSources").mockReturnValue([]);
-			vi.spyOn(trackingService as any, "getDeviceBreakdown").mockReturnValue([]);
+			vi.spyOn(trackingService as any, "getDeviceBreakdown").mockReturnValue(
+				[],
+			);
 			vi.spyOn(trackingService as any, "getGeographicData").mockReturnValue([]);
 			vi.spyOn(trackingService as any, "getTimeSeriesData").mockReturnValue([]);
 

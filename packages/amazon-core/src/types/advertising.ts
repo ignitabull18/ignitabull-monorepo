@@ -496,3 +496,32 @@ export interface AdvertisingError {
 	message: string;
 	details?: string;
 }
+
+/**
+ * Campaign Type enum
+ */
+export type AdvertisingCampaignType =
+	| "sponsoredProducts"
+	| "sponsoredBrands"
+	| "sponsoredDisplay";
+
+/**
+ * Campaign Performance interface
+ */
+export interface CampaignPerformance {
+	campaignId: string;
+	impressions: number;
+	clicks: number;
+	cost: number;
+	sales: number;
+	orders: number;
+	ctr: number; // Click-through rate
+	cpc: number; // Cost per click
+	acos: number; // Advertising cost of sales
+	roas: number; // Return on ad spend
+	conversionRate: number;
+	period: {
+		startDate: string;
+		endDate: string;
+	};
+}

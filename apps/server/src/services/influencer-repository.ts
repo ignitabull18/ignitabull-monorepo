@@ -24,7 +24,7 @@ import type {
 	UpdateInfluencerContract,
 	UpdateInfluencerOutreach,
 	UpdateInfluencerProfile,
-} from "../../../packages/core/src/types/influencer-marketing";
+} from "@ignitabull/core";
 
 export class InfluencerRepository {
 	private supabase: ReturnType<typeof createClient>;

@@ -18,7 +18,6 @@ import type {
 	CrossChannelAnalysis,
 	UpdateAttributionCampaignRequest,
 } from "../types/attribution";
-import { MemoryCache } from "../utils/cache";
 import { BaseProvider } from "./base-provider";
 
 export interface AttributionProvider {
@@ -120,23 +119,56 @@ export class AttributionProviderImpl
 	extends BaseProvider
 	implements AttributionProvider
 {
-	private cache: MemoryCache<any>;
+	readonly providerId = "attribution";
+	readonly name = "Amazon Attribution API";
+	readonly version = "1.0";
+	private readonly config: AttributionProviderConfig;
 
 	constructor(config: AttributionProviderConfig) {
-		super({
-			providerId: "attribution",
-			name: "Amazon Attribution API",
-			version: "1.0",
-			description:
-				"Provider for Amazon Attribution API - track off-Amazon marketing campaigns",
-			...config,
-		});
+		super(
+			{
+				...config.caching,
+				keyPrefix: "attribution",
+			},
+			{
+				maxRetries: config.retryConfig.maxRetries,
+				baseDelay: 1000,
+				maxDelay: config.retryConfig.maxBackoffTime,
+				backoffMultiplier: config.retryConfig.backoffMultiplier,
+				retryableStatuses: [429, 500, 502, 503, 504],
+				retryableErrors: ["ECONNRESET", "ETIMEDOUT", "ECONNREFUSED"],
+			},
+		);
+		this.config = config;
+	}
 
-		this.cache = new MemoryCache<any>({
-			maxSize: config.caching?.maxSize || 1000,
-			ttl: config.caching?.ttl || 300000, // 5 minutes
-			enabled: config.caching?.enabled ?? true,
-		});
+	async initialize(): Promise<void> {
+		// Initialize the Attribution API provider
+		this.logger.info("Attribution API provider initialized");
+	}
+
+	async healthCheck(): Promise<{
+		status: "healthy" | "unhealthy";
+		message?: string;
+	}> {
+		try {
+			// Simple health check - verify we can make a request
+			await this.makeRequest("/attribution/health", "GET");
+			return { status: "healthy" };
+		} catch (error) {
+			return {
+				status: "unhealthy",
+				message: error instanceof Error ? error.message : "Unknown error",
+			};
+		}
+	}
+
+	async getRateLimit(): Promise<{ remaining: number; resetTime: Date }> {
+		// Return basic rate limit info (implementation would depend on API response headers)
+		return {
+			remaining: 100,
+			resetTime: new Date(Date.now() + 60000), // 1 minute from now
+		};
 	}
 
 	async getAttributionCampaigns(
@@ -145,8 +177,8 @@ export class AttributionProviderImpl
 	): Promise<AttributionCampaign[]> {
 		const cacheKey = `campaigns:${advertiserId}:${JSON.stringify(filters)}`;
 
-		return this.cache.get(cacheKey, async () => {
-			await this.ensureRateLimit();
+		return this.getFromCache(cacheKey, async () => {
+			await this.ensureRateLimit("/attribution");
 
 			const queryParams = new URLSearchParams({
 				advertiserId,
@@ -197,7 +229,7 @@ export class AttributionProviderImpl
 	async createAttributionCampaign(
 		request: CreateAttributionCampaignRequest,
 	): Promise<AttributionCampaign> {
-		await this.ensureRateLimit();
+		await this.ensureRateLimit("/attribution");
 
 		const response = await this.makeRequest(
 			"/attribution/campaigns",
@@ -206,7 +238,7 @@ export class AttributionProviderImpl
 		);
 
 		// Clear cache for this advertiser
-		this.cache.clear(`campaigns:${request.advertiserId}`);
+		this.cache.clearPattern(`campaigns:${request.advertiserId}`);
 
 		return {
 			campaignId: response.campaignId,
@@ -243,7 +275,7 @@ export class AttributionProviderImpl
 	async updateAttributionCampaign(
 		request: UpdateAttributionCampaignRequest,
 	): Promise<AttributionCampaign> {
-		await this.ensureRateLimit();
+		await this.ensureRateLimit("/attribution");
 
 		const response = await this.makeRequest(
 			`/attribution/campaigns/${request.campaignId}`,
@@ -252,18 +284,18 @@ export class AttributionProviderImpl
 		);
 
 		// Clear cache
-		this.cache.clear(`campaigns:${response.advertiserId}`);
+		this.cache.clearPattern(`campaigns:${response.advertiserId}`);
 
 		return response;
 	}
 
 	async deleteAttributionCampaign(campaignId: string): Promise<void> {
-		await this.ensureRateLimit();
+		await this.ensureRateLimit("/attribution");
 
 		await this.makeRequest(`/attribution/campaigns/${campaignId}`, "DELETE");
 
 		// Clear related cache entries
-		this.cache.clearPattern("campaigns:");
+		this.clearCachePattern("campaigns:");
 	}
 
 	async getAttributionAudiences(
@@ -271,8 +303,8 @@ export class AttributionProviderImpl
 	): Promise<AttributionAudience[]> {
 		const cacheKey = `audiences:${advertiserId}`;
 
-		return this.cache.get(cacheKey, async () => {
-			await this.ensureRateLimit();
+		return this.getFromCache(cacheKey, async () => {
+			await this.ensureRateLimit("/attribution");
 
 			const response = await this.makeRequest(
 				`/attribution/audiences?advertiserId=${advertiserId}`,
@@ -286,7 +318,7 @@ export class AttributionProviderImpl
 	async createAttributionAudience(
 		audience: Partial<AttributionAudience>,
 	): Promise<AttributionAudience> {
-		await this.ensureRateLimit();
+		await this.ensureRateLimit("/attribution");
 
 		const response = await this.makeRequest(
 			"/attribution/audiences",
@@ -295,7 +327,7 @@ export class AttributionProviderImpl
 		);
 
 		// Clear cache
-		this.cache.clearPattern("audiences:");
+		this.clearCachePattern("audiences:");
 
 		return response;
 	}
@@ -304,7 +336,7 @@ export class AttributionProviderImpl
 		audienceId: string,
 		updates: Partial<AttributionAudience>,
 	): Promise<AttributionAudience> {
-		await this.ensureRateLimit();
+		await this.ensureRateLimit("/attribution");
 
 		const response = await this.makeRequest(
 			`/attribution/audiences/${audienceId}`,
@@ -313,18 +345,18 @@ export class AttributionProviderImpl
 		);
 
 		// Clear cache
-		this.cache.clearPattern("audiences:");
+		this.clearCachePattern("audiences:");
 
 		return response;
 	}
 
 	async deleteAttributionAudience(audienceId: string): Promise<void> {
-		await this.ensureRateLimit();
+		await this.ensureRateLimit("/attribution");
 
 		await this.makeRequest(`/attribution/audiences/${audienceId}`, "DELETE");
 
 		// Clear cache
-		this.cache.clearPattern("audiences:");
+		this.clearCachePattern("audiences:");
 	}
 
 	async getAttributionCreatives(
@@ -332,8 +364,8 @@ export class AttributionProviderImpl
 	): Promise<AttributionCreative[]> {
 		const cacheKey = `creatives:${campaignId}`;
 
-		return this.cache.get(cacheKey, async () => {
-			await this.ensureRateLimit();
+		return this.getFromCache(cacheKey, async () => {
+			await this.ensureRateLimit("/attribution");
 
 			const response = await this.makeRequest(
 				`/attribution/creatives?campaignId=${campaignId}`,
@@ -347,7 +379,7 @@ export class AttributionProviderImpl
 	async createAttributionCreative(
 		creative: Partial<AttributionCreative>,
 	): Promise<AttributionCreative> {
-		await this.ensureRateLimit();
+		await this.ensureRateLimit("/attribution");
 
 		const response = await this.makeRequest(
 			"/attribution/creatives",
@@ -356,7 +388,7 @@ export class AttributionProviderImpl
 		);
 
 		// Clear cache
-		this.cache.clear(`creatives:${creative.campaignId}`);
+		this.cache.clearPattern(`creatives:${creative.campaignId}`);
 
 		return response;
 	}
@@ -365,7 +397,7 @@ export class AttributionProviderImpl
 		creativeId: string,
 		updates: Partial<AttributionCreative>,
 	): Promise<AttributionCreative> {
-		await this.ensureRateLimit();
+		await this.ensureRateLimit("/attribution");
 
 		const response = await this.makeRequest(
 			`/attribution/creatives/${creativeId}`,
@@ -374,18 +406,18 @@ export class AttributionProviderImpl
 		);
 
 		// Clear cache
-		this.cache.clearPattern("creatives:");
+		this.clearCachePattern("creatives:");
 
 		return response;
 	}
 
 	async deleteAttributionCreative(creativeId: string): Promise<void> {
-		await this.ensureRateLimit();
+		await this.ensureRateLimit("/attribution");
 
 		await this.makeRequest(`/attribution/creatives/${creativeId}`, "DELETE");
 
 		// Clear cache
-		this.cache.clearPattern("creatives:");
+		this.clearCachePattern("creatives:");
 	}
 
 	async generateAttributionReport(
@@ -393,10 +425,10 @@ export class AttributionProviderImpl
 	): Promise<AttributionReport> {
 		const cacheKey = `report:${JSON.stringify(request)}`;
 
-		return this.cache.get(
+		return this.cache.getOrCompute(
 			cacheKey,
 			async () => {
-				await this.ensureRateLimit();
+				await this.ensureRateLimit("/attribution");
 
 				const response = await this.makeRequest(
 					"/attribution/reports",
@@ -428,8 +460,8 @@ export class AttributionProviderImpl
 	): Promise<AttributionConversion[]> {
 		const cacheKey = `conversions:${campaignId}:${startDate}:${endDate}`;
 
-		return this.cache.get(cacheKey, async () => {
-			await this.ensureRateLimit();
+		return this.getFromCache(cacheKey, async () => {
+			await this.ensureRateLimit("/attribution");
 
 			const response = await this.makeRequest(
 				`/attribution/conversions?campaignId=${campaignId}&startDate=${startDate}&endDate=${endDate}`,
@@ -447,10 +479,10 @@ export class AttributionProviderImpl
 	): Promise<CrossChannelAnalysis> {
 		const cacheKey = `cross-channel:${advertiserId}:${startDate}:${endDate}`;
 
-		return this.cache.get(
+		return this.cache.getOrCompute(
 			cacheKey,
 			async () => {
-				await this.ensureRateLimit();
+				await this.ensureRateLimit("/attribution");
 
 				const response = await this.makeRequest(
 					`/attribution/cross-channel?advertiserId=${advertiserId}&startDate=${startDate}&endDate=${endDate}`,
@@ -488,10 +520,10 @@ export class AttributionProviderImpl
 	): Promise<AttributionOptimizationSuggestion[]> {
 		const cacheKey = `optimization:${campaignId}`;
 
-		return this.cache.get(
+		return this.cache.getOrCompute(
 			cacheKey,
 			async () => {
-				await this.ensureRateLimit();
+				await this.ensureRateLimit("/attribution");
 
 				const response = await this.makeRequest(
 					`/attribution/optimization/${campaignId}`,
@@ -507,7 +539,7 @@ export class AttributionProviderImpl
 	async performBulkOperation(
 		request: BulkAttributionOperationRequest,
 	): Promise<{ success: number; failed: number; errors: string[] }> {
-		await this.ensureRateLimit();
+		await this.ensureRateLimit("/attribution");
 
 		const response = await this.makeRequest(
 			"/attribution/bulk",
@@ -516,9 +548,9 @@ export class AttributionProviderImpl
 		);
 
 		// Clear relevant cache entries
-		this.cache.clearPattern("campaigns:");
-		this.cache.clearPattern("creatives:");
-		this.cache.clearPattern("audiences:");
+		this.clearCachePattern("campaigns:");
+		this.clearCachePattern("creatives:");
+		this.clearCachePattern("audiences:");
 
 		return {
 			success: response.successCount || 0,
@@ -539,8 +571,8 @@ export class AttributionProviderImpl
 	}> {
 		const cacheKey = `journey:${customerId}:${startDate}:${endDate}`;
 
-		return this.cache.get(cacheKey, async () => {
-			await this.ensureRateLimit();
+		return this.getFromCache(cacheKey, async () => {
+			await this.ensureRateLimit("/attribution");
 
 			const response = await this.makeRequest(
 				`/attribution/journey?customerId=${customerId}&startDate=${startDate}&endDate=${endDate}`,
@@ -567,10 +599,10 @@ export class AttributionProviderImpl
 	}> {
 		const cacheKey = `incremental:${campaignId}:${controlGroupSize}`;
 
-		return this.cache.get(
+		return this.cache.getOrCompute(
 			cacheKey,
 			async () => {
-				await this.ensureRateLimit();
+				await this.ensureRateLimit("/attribution");
 
 				const response = await this.makeRequest(
 					`/attribution/incremental?campaignId=${campaignId}&controlGroupSize=${controlGroupSize}`,

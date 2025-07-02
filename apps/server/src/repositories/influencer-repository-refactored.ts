@@ -16,7 +16,7 @@ import type {
 	UpdateInfluencerCampaign,
 	UpdateInfluencerOutreach,
 	UpdateInfluencerProfile,
-} from "../../../packages/core/src/types/influencer-marketing";
+} from "@ignitabull/core";
 import {
 	BaseRepository,
 	type PaginationOptions,

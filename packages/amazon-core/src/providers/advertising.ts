@@ -3,12 +3,9 @@
  * Following AI SDK provider patterns
  */
 
-import {
-	AmazonAPIError,
-	AmazonError,
-	AmazonRateLimitError,
-} from "../errors/base";
-import { NetworkErrorFactory } from "../errors/network-errors";
+import { AdvertisingAPIError } from "../errors/api-errors";
+import { AmazonConfigError } from "../errors/base";
+import { NetworkErrorFactory, RateLimitError } from "../errors/network-errors";
 import type {
 	AdvertisingAdGroup,
 	AdvertisingCampaign,
@@ -25,18 +22,15 @@ import type {
 	ReportRequest,
 	UpdateCampaignRequest,
 } from "../types/advertising";
+import type { AdvertisingConfig } from "../types/config";
 import type {
-	AdvertisingConfig,
 	APIResponse,
-	BaseAmazonProvider,
 	AdvertisingProvider as IAdvertisingProvider,
 	RequestOptions,
 } from "../types/provider";
 import { AdvertisingAuthProvider } from "../utils/auth";
-import { MemoryCache } from "../utils/cache";
-import { createProviderLogger } from "../utils/logger";
 import { RateLimiter } from "../utils/rate-limiter";
-import { ExponentialBackoffStrategy, RetryExecutor } from "../utils/retry";
+import { BaseProvider } from "./base-provider";
 
 /**
  * Advertising API endpoint configurations
@@ -65,7 +59,8 @@ const ADVERTISING_API_RATE_LIMITS = {
  * Amazon Advertising API provider implementation
  */
 export class AdvertisingProvider
-	implements IAdvertisingProvider, BaseAmazonProvider
+	extends BaseProvider
+	implements IAdvertisingProvider
 {
 	readonly providerId = "advertising";
 	readonly name = "Amazon Advertising API";
@@ -73,33 +68,12 @@ export class AdvertisingProvider
 
 	private readonly config: AdvertisingConfig;
 	private readonly authProvider: AdvertisingAuthProvider;
-	private readonly retryExecutor: RetryExecutor;
-	private readonly rateLimiters = new Map<string, RateLimiter>();
-	private readonly cache: MemoryCache;
-	private readonly logger = createProviderLogger("advertising");
 	private initialized = false;
 
 	constructor(config: AdvertisingConfig) {
+		super(config.cache, config.retry);
 		this.config = config;
 		this.authProvider = new AdvertisingAuthProvider(config);
-
-		// Initialize retry executor with Advertising API specific configuration
-		const retryStrategy = new ExponentialBackoffStrategy({
-			maxRetries: config.retry?.maxRetries || 5,
-			baseDelay: config.retry?.baseDelay || 500,
-			maxDelay: config.retry?.maxDelay || 15000,
-			backoffMultiplier: config.retry?.backoffMultiplier || 1.5,
-			retryableStatuses: [429, 500, 502, 503, 504],
-			retryableErrors: ["ECONNRESET", "ETIMEDOUT", "ENOTFOUND"],
-		});
-
-		this.retryExecutor = new RetryExecutor(retryStrategy, config.retry!);
-
-		// Initialize cache
-		this.cache = new MemoryCache({
-			defaultTTL: config.cache?.defaultTTL || 300,
-			maxSize: config.cache?.maxSize || 1000,
-		});
 
 		this.logger.info("Advertising API provider initialized", {
 			region: config.region,
@@ -114,7 +88,7 @@ export class AdvertisingProvider
 			// Validate credentials
 			const isValid = await this.authProvider.validateCredentials();
 			if (!isValid) {
-				throw new AmazonError("Invalid Advertising API credentials");
+				throw new AmazonConfigError("Invalid Advertising API credentials");
 			}
 
 			// Initialize rate limiters for known endpoints
@@ -213,7 +187,10 @@ export class AdvertisingProvider
 
 	async getCampaign(campaignId: string): Promise<AdvertisingCampaign> {
 		if (!campaignId) {
-			throw new AmazonError("Campaign ID is required");
+			throw new AdvertisingAPIError("Campaign ID is required", {
+				code: "INVALID_CAMPAIGN_ID",
+				retryable: false,
+			});
 		}
 
 		const response = await this.request<AdvertisingCampaign>(
@@ -229,8 +206,12 @@ export class AdvertisingProvider
 	): Promise<AdvertisingCampaign> {
 		// Validate campaign data
 		if (!campaign.name || !campaign.campaignType || !campaign.targetingType) {
-			throw new AmazonError(
+			throw new AdvertisingAPIError(
 				"Campaign name, type, and targeting type are required",
+				{
+					code: "INVALID_REQUEST",
+					retryable: false,
+				},
 			);
 		}
 
@@ -248,7 +229,10 @@ export class AdvertisingProvider
 		updates: UpdateCampaignRequest,
 	): Promise<AdvertisingCampaign> {
 		if (!campaignId) {
-			throw new AmazonError("Campaign ID is required");
+			throw new AdvertisingAPIError("Campaign ID is required", {
+				code: "INVALID_CAMPAIGN_ID",
+				retryable: false,
+			});
 		}
 
 		const response = await this.request<AdvertisingCampaign>(
@@ -262,7 +246,10 @@ export class AdvertisingProvider
 
 	async archiveCampaign(campaignId: string): Promise<{ success: boolean }> {
 		if (!campaignId) {
-			throw new AmazonError("Campaign ID is required");
+			throw new AdvertisingAPIError("Campaign ID is required", {
+				code: "INVALID_CAMPAIGN_ID",
+				retryable: false,
+			});
 		}
 
 		await this.updateCampaign(campaignId, { state: "archived" });
@@ -309,8 +296,12 @@ export class AdvertisingProvider
 		adGroup: CreateAdGroupRequest,
 	): Promise<AdvertisingAdGroup> {
 		if (!adGroup.name || !adGroup.campaignId || !adGroup.defaultBid) {
-			throw new AmazonError(
+			throw new AdvertisingAPIError(
 				"Ad group name, campaign ID, and default bid are required",
+				{
+					code: "INVALID_REQUEST",
+					retryable: false,
+				},
 			);
 		}
 
@@ -374,14 +365,21 @@ export class AdvertisingProvider
 		keywords: CreateKeywordRequest[],
 	): Promise<AdvertisingKeyword[]> {
 		if (!keywords.length) {
-			throw new AmazonError("At least one keyword is required");
+			throw new AdvertisingAPIError("At least one keyword is required", {
+				code: "INVALID_REQUEST",
+				retryable: false,
+			});
 		}
 
 		// Validate keywords
 		for (const keyword of keywords) {
 			if (!keyword.keywordText || !keyword.campaignId || !keyword.adGroupId) {
-				throw new AmazonError(
+				throw new AdvertisingAPIError(
 					"Keyword text, campaign ID, and ad group ID are required",
+					{
+						code: "INVALID_REQUEST",
+						retryable: false,
+					},
 				);
 			}
 		}
@@ -403,7 +401,10 @@ export class AdvertisingProvider
 		}>,
 	): Promise<AdvertisingKeyword[]> {
 		if (!keywords.length) {
-			throw new AmazonError("At least one keyword update is required");
+			throw new AdvertisingAPIError("At least one keyword update is required", {
+				code: "INVALID_REQUEST",
+				retryable: false,
+			});
 		}
 
 		const response = await this.request<AdvertisingKeyword[]>(
@@ -463,14 +464,21 @@ export class AdvertisingProvider
 		productAds: CreateProductAdRequest[],
 	): Promise<AdvertisingProductAd[]> {
 		if (!productAds.length) {
-			throw new AmazonError("At least one product ad is required");
+			throw new AdvertisingAPIError("At least one product ad is required", {
+				code: "INVALID_REQUEST",
+				retryable: false,
+			});
 		}
 
 		// Validate product ads
 		for (const ad of productAds) {
 			if (!ad.campaignId || !ad.adGroupId || (!ad.asin && !ad.sku)) {
-				throw new AmazonError(
+				throw new AdvertisingAPIError(
 					"Campaign ID, ad group ID, and either ASIN or SKU are required",
+					{
+						code: "INVALID_REQUEST",
+						retryable: false,
+					},
 				);
 			}
 		}
@@ -490,7 +498,13 @@ export class AdvertisingProvider
 	): Promise<{ reportId: string }> {
 		// Validate report request
 		if (!reportRequest.recordType || !reportRequest.reportDate) {
-			throw new AmazonError("Record type and report date are required");
+			throw new AdvertisingAPIError(
+				"Record type and report date are required",
+				{
+					code: "INVALID_REQUEST",
+					retryable: false,
+				},
+			);
 		}
 
 		const response = await this.request<{ reportId: string }>(
@@ -504,7 +518,10 @@ export class AdvertisingProvider
 
 	async getReport(reportId: string): Promise<AdvertisingReport> {
 		if (!reportId) {
-			throw new AmazonError("Report ID is required");
+			throw new AdvertisingAPIError("Report ID is required", {
+				code: "INVALID_REPORT_ID",
+				retryable: false,
+			});
 		}
 
 		const response = await this.request<AdvertisingReport>(
@@ -519,15 +536,22 @@ export class AdvertisingProvider
 		const report = await this.getReport(reportId);
 
 		if (report.status !== "SUCCESS" || !report.location) {
-			throw new AmazonError(
+			throw new AdvertisingAPIError(
 				"Report is not ready for download or failed to generate",
+				{
+					code: "REPORT_NOT_READY",
+					retryable: true,
+				},
 			);
 		}
 
 		// Download the report data
 		const response = await fetch(report.location);
 		if (!response.ok) {
-			throw new AmazonError("Failed to download report data");
+			throw new AdvertisingAPIError("Failed to download report data", {
+				code: "REPORT_DOWNLOAD_ERROR",
+				retryable: true,
+			});
 		}
 
 		return response.text();
@@ -622,7 +646,10 @@ export class AdvertisingProvider
 		options: RequestOptions = {},
 		requestId?: string,
 	): Promise<APIResponse<T>> {
-		const baseUrl = ADVERTISING_API_ENDPOINTS[this.config.region];
+		const baseUrl =
+			ADVERTISING_API_ENDPOINTS[
+				this.config.region as keyof typeof ADVERTISING_API_ENDPOINTS
+			] || ADVERTISING_API_ENDPOINTS["us-east-1"];
 		const url = `${baseUrl}${path}`;
 
 		this.logger.logRequest("advertising", path, method, requestId);
@@ -663,19 +690,21 @@ export class AdvertisingProvider
 			if (!response.ok) {
 				if (response.status === 429) {
 					const retryAfter = response.headers.get("retry-after");
-					throw new AmazonRateLimitError(
-						url,
-						response.status,
-						response.statusText,
-						retryAfter ? Number.parseInt(retryAfter) : undefined,
-					);
+					throw new RateLimitError(url, {
+						method,
+						retryAfter: retryAfter ? Number.parseInt(retryAfter) : undefined,
+						responseHeaders: {},
+					});
 				}
 
-				throw new AmazonAPIError(
+				throw new AdvertisingAPIError(
 					`Advertising API request failed: ${response.statusText}`,
-					response.status,
-					responseText,
-					{ provider: "advertising", endpoint: path },
+					{
+						code: `HTTP_${response.status}`,
+						statusCode: response.status,
+						requestId,
+						retryable: response.status >= 500,
+					},
 				);
 			}
 
@@ -683,10 +712,10 @@ export class AdvertisingProvider
 				data,
 				statusCode: response.status,
 				statusText: response.statusText,
-				headers: Object.fromEntries(response.headers.entries()),
+				headers: {},
 			};
 		} catch (error) {
-			if (error instanceof AmazonError) {
+			if (error instanceof AdvertisingAPIError) {
 				throw error;
 			}
 
@@ -727,6 +756,8 @@ export class AdvertisingProvider
 				new RateLimiter({
 					requestsPerSecond: config.requestsPerSecond,
 					burstLimit: config.burstLimit,
+					backoffMultiplier: 2,
+					maxBackoffTime: 60000,
 					jitter: true,
 				}),
 			);

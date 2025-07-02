@@ -241,7 +241,7 @@ export class CircuitBreaker {
 			totalFailures: this.totalFailures,
 			totalSuccesses: this.totalSuccesses,
 			averageResponseTime,
-		};
+		} as CircuitBreakerStats;
 	}
 
 	/**

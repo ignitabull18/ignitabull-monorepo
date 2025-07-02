@@ -3,12 +3,8 @@
  * Provides search query analytics and SEO insights
  */
 
-import { AmazonAPIError } from "../errors/api";
-import type {
-	AuthConfig,
-	ProviderConfig,
-	RateLimitConfig,
-} from "../types/provider";
+import { SPAPIError } from "../errors/api-errors";
+import type { AuthConfig, ProviderConfig } from "../types/provider";
 import type {
 	AutocompleteAnalysis,
 	BrandSearchAnalysis,
@@ -34,8 +30,8 @@ import type {
 import { MemoryCache } from "../utils/cache";
 import { createProviderLogger } from "../utils/logger";
 import { RateLimiter } from "../utils/rate-limiter";
-import { RetryHandler } from "../utils/retry";
-import { BaseProvider } from "./base";
+import { ExponentialBackoffStrategy, RetryHandler } from "../utils/retry";
+import { BaseProvider } from "./base-provider";
 
 /**
  * Search Performance Provider Interface
@@ -161,6 +157,10 @@ export class SearchPerformanceProviderImpl
 	extends BaseProvider
 	implements SearchPerformanceProvider
 {
+	readonly providerId = "search-performance";
+	readonly name = "Amazon Search Performance API";
+	readonly version = "1.0";
+
 	protected readonly logger = createProviderLogger(
 		"search-performance-provider",
 	);
@@ -168,24 +168,60 @@ export class SearchPerformanceProviderImpl
 	protected readonly retryHandler: RetryHandler;
 	protected readonly cache: MemoryCache;
 	private searchConfig: SearchPerformanceConfig;
+	// private initialized = false; // Reserved for future initialization tracking
 
 	constructor(config: ProviderConfig & { auth: AuthConfig }) {
-		super(config);
+		super(
+			{
+				enabled: config.cache?.enabled ?? true,
+				ttl: config.cache?.ttl ?? 300,
+				maxSize: 1000,
+				keyPrefix: "search-performance",
+			},
+			{
+				maxRetries: config.retries?.maxRetries ?? 3,
+				baseDelay: 1000,
+				maxDelay: config.retries?.backoffMultiplier
+					? config.retries.backoffMultiplier * 1000
+					: 10000,
+				backoffMultiplier: config.retries?.backoffMultiplier ?? 2,
+				retryableStatuses: [429, 500, 502, 503, 504],
+				retryableErrors: ["ECONNRESET", "ETIMEDOUT", "ECONNREFUSED"],
+			},
+		);
 
 		this.rateLimiter = new RateLimiter({
-			maxRequests: config.rateLimit?.maxRequests || 10,
-			windowMs: config.rateLimit?.windowMs || 1000,
+			requestsPerSecond: config.rateLimits?.requestsPerSecond || 10,
+			burstLimit: config.rateLimits?.burstLimit || 20,
+			backoffMultiplier: 2,
+			maxBackoffTime: 30000,
+			jitter: true,
 		});
 
-		this.retryHandler = new RetryHandler({
-			maxRetries: config.retry?.maxRetries || 3,
-			baseDelay: config.retry?.baseDelay || 1000,
-			maxDelay: config.retry?.maxDelay || 10000,
-		});
+		this.retryHandler = new RetryHandler(
+			new ExponentialBackoffStrategy({
+				maxRetries: config.retries?.maxRetries ?? 3,
+				baseDelay: 1000,
+				maxDelay: 10000,
+				backoffMultiplier: config.retries?.backoffMultiplier ?? 2,
+				retryableStatuses: [429, 500, 502, 503, 504],
+				retryableErrors: ["ECONNRESET", "ETIMEDOUT", "ECONNREFUSED"],
+			}),
+			{
+				maxRetries: config.retries?.maxRetries ?? 3,
+				baseDelay: 1000,
+				maxDelay: 10000,
+				backoffMultiplier: config.retries?.backoffMultiplier ?? 2,
+				retryableStatuses: [429, 500, 502, 503, 504],
+				retryableErrors: ["ECONNRESET", "ETIMEDOUT", "ECONNREFUSED"],
+			},
+		);
 
 		this.cache = new MemoryCache({
-			defaultTTL: 300, // 5 minutes
+			enabled: true,
+			ttl: 300, // 5 minutes
 			maxSize: 1000,
+			keyPrefix: "amazon_search_performance",
 		});
 
 		this.searchConfig = {
@@ -216,25 +252,31 @@ export class SearchPerformanceProviderImpl
 
 	async initialize(): Promise<void> {
 		this.logger.info("Initializing Search Performance Provider");
-		this.initialized = true;
+		// this.initialized = true;
 	}
 
-	async healthCheck(): Promise<boolean> {
+	async healthCheck(): Promise<{
+		status: "healthy" | "unhealthy";
+		message?: string;
+	}> {
 		try {
 			// Simulate API health check
 			await this.simulateAPICall("/health", "GET");
-			return true;
+			return { status: "healthy" };
 		} catch (error) {
-			this.logger.error("Health check failed", { error });
-			return false;
+			this.logger.error("Health check failed", error as Error);
+			return {
+				status: "unhealthy",
+				message: error instanceof Error ? error.message : "Unknown error",
+			};
 		}
 	}
 
-	getRateLimit(): RateLimitConfig {
+	async getRateLimit(): Promise<{ remaining: number; resetTime: Date }> {
+		const status = this.rateLimiter.getStatus();
 		return {
-			maxRequests: 10,
-			windowMs: 1000,
-			retryAfter: this.rateLimiter.getRetryAfter(),
+			remaining: status.tokensRemaining,
+			resetTime: new Date(Date.now() + status.estimatedWaitTime),
 		};
 	}
 
@@ -255,7 +297,7 @@ export class SearchPerformanceProviderImpl
 		await this.rateLimiter.acquire();
 
 		try {
-			const _response = await this.retryHandler.execute(() =>
+			await this.retryHandler.execute(() =>
 				this.simulateAPICall("/search/metrics", "POST", {
 					asin,
 					startDate: dateRange.startDate,
@@ -310,9 +352,10 @@ export class SearchPerformanceProviderImpl
 			await this.cache.set(cacheKey, metrics, 600); // Cache for 10 minutes
 			return metrics;
 		} catch (error) {
-			throw new AmazonAPIError("Failed to get search query metrics", {
-				asin,
-				error,
+			throw new SPAPIError("Failed to get search query metrics", {
+				code: "SEARCH_QUERY_METRICS_ERROR",
+				cause: { asin, originalError: error },
+				retryable: true,
 			});
 		}
 	}
@@ -360,9 +403,10 @@ export class SearchPerformanceProviderImpl
 			await this.cache.set(cacheKey, trends, 1800); // Cache for 30 minutes
 			return trends;
 		} catch (error) {
-			throw new AmazonAPIError("Failed to get search term trends", {
-				searchTerms,
-				error,
+			throw new SPAPIError("Failed to get search term trends", {
+				code: "SEARCH_TERM_TRENDS_ERROR",
+				cause: { searchTerms, originalError: error },
+				retryable: true,
 			});
 		}
 	}
@@ -397,10 +441,10 @@ export class SearchPerformanceProviderImpl
 
 			return rankings;
 		} catch (error) {
-			throw new AmazonAPIError("Failed to get keyword rankings", {
-				asin,
-				keywords,
-				error,
+			throw new SPAPIError("Failed to get keyword rankings", {
+				code: "KEYWORD_RANKINGS_ERROR",
+				cause: { asin, keywords, originalError: error },
+				retryable: true,
 			});
 		}
 	}
@@ -440,9 +484,10 @@ export class SearchPerformanceProviderImpl
 			await this.cache.set(cacheKey, score, 3600); // Cache for 1 hour
 			return score;
 		} catch (error) {
-			throw new AmazonAPIError("Failed to get search visibility score", {
-				asin,
-				error,
+			throw new SPAPIError("Failed to get search visibility score", {
+				code: "SEARCH_VISIBILITY_ERROR",
+				cause: { asin, originalError: error },
+				retryable: true,
 			});
 		}
 	}
@@ -495,10 +540,10 @@ export class SearchPerformanceProviderImpl
 
 			return analyses;
 		} catch (error) {
-			throw new AmazonAPIError("Failed to analyze competitors", {
-				asin,
-				competitorAsins,
-				error,
+			throw new SPAPIError("Failed to analyze competitors", {
+				code: "COMPETITOR_ANALYSIS_ERROR",
+				cause: { asin, competitorAsins, originalError: error },
+				retryable: true,
 			});
 		}
 	}
@@ -554,9 +599,10 @@ export class SearchPerformanceProviderImpl
 
 			return intents;
 		} catch (error) {
-			throw new AmazonAPIError("Failed to analyze search intent", {
-				queries,
-				error,
+			throw new SPAPIError("Failed to analyze search intent", {
+				code: "SEARCH_INTENT_ERROR",
+				cause: { queries, originalError: error },
+				retryable: true,
 			});
 		}
 	}
@@ -615,9 +661,10 @@ export class SearchPerformanceProviderImpl
 
 			return opportunities.slice(0, 20); // Return top 20
 		} catch (error) {
-			throw new AmazonAPIError("Failed to find long-tail opportunities", {
-				seedKeywords,
-				error,
+			throw new SPAPIError("Failed to find long-tail opportunities", {
+				code: "LONGTAIL_OPPORTUNITIES_ERROR",
+				cause: { seedKeywords, originalError: error },
+				retryable: true,
 			});
 		}
 	}
@@ -675,9 +722,10 @@ export class SearchPerformanceProviderImpl
 
 			return analyses;
 		} catch (error) {
-			throw new AmazonAPIError("Failed to analyze autocomplete", {
-				seedTerms,
-				error,
+			throw new SPAPIError("Failed to analyze autocomplete", {
+				code: "AUTOCOMPLETE_ANALYSIS_ERROR",
+				cause: { seedTerms, originalError: error },
+				retryable: true,
 			});
 		}
 	}
@@ -724,9 +772,10 @@ export class SearchPerformanceProviderImpl
 
 			return report;
 		} catch (error) {
-			throw new AmazonAPIError("Failed to generate search performance report", {
-				asin,
-				error,
+			throw new SPAPIError("Failed to generate search performance report", {
+				code: "SEARCH_PERFORMANCE_REPORT_ERROR",
+				cause: { asin, originalError: error },
+				retryable: true,
 			});
 		}
 	}
@@ -812,9 +861,10 @@ export class SearchPerformanceProviderImpl
 
 			return recommendations;
 		} catch (error) {
-			throw new AmazonAPIError("Failed to get SEO recommendations", {
-				asin,
-				error,
+			throw new SPAPIError("Failed to get SEO recommendations", {
+				code: "SEO_RECOMMENDATIONS_ERROR",
+				cause: { asin, originalError: error },
+				retryable: true,
 			});
 		}
 	}
@@ -851,9 +901,10 @@ export class SearchPerformanceProviderImpl
 
 			return score;
 		} catch (error) {
-			throw new AmazonAPIError("Failed to get listing quality score", {
-				asin,
-				error,
+			throw new SPAPIError("Failed to get listing quality score", {
+				code: "LISTING_QUALITY_ERROR",
+				cause: { asin, originalError: error },
+				retryable: true,
 			});
 		}
 	}
@@ -895,9 +946,10 @@ export class SearchPerformanceProviderImpl
 
 			return anomalies;
 		} catch (error) {
-			throw new AmazonAPIError("Failed to detect search anomalies", {
-				asin,
-				error,
+			throw new SPAPIError("Failed to detect search anomalies", {
+				code: "SEARCH_ANOMALIES_ERROR",
+				cause: { asin, originalError: error },
+				retryable: true,
 			});
 		}
 	}
@@ -937,9 +989,10 @@ export class SearchPerformanceProviderImpl
 
 			return optimizations;
 		} catch (error) {
-			throw new AmazonAPIError("Failed to analyze voice search optimization", {
-				asin,
-				error,
+			throw new SPAPIError("Failed to analyze voice search optimization", {
+				code: "VOICE_SEARCH_ERROR",
+				cause: { asin, originalError: error },
+				retryable: true,
 			});
 		}
 	}
@@ -974,9 +1027,10 @@ export class SearchPerformanceProviderImpl
 
 			return performance;
 		} catch (error) {
-			throw new AmazonAPIError("Failed to get mobile search performance", {
-				asin,
-				error,
+			throw new SPAPIError("Failed to get mobile search performance", {
+				code: "MOBILE_SEARCH_ERROR",
+				cause: { asin, originalError: error },
+				retryable: true,
 			});
 		}
 	}
@@ -1015,9 +1069,10 @@ export class SearchPerformanceProviderImpl
 
 			return analyses;
 		} catch (error) {
-			throw new AmazonAPIError("Failed to analyze seasonality", {
-				keywords,
-				error,
+			throw new SPAPIError("Failed to analyze seasonality", {
+				code: "SEASONALITY_ANALYSIS_ERROR",
+				cause: { keywords, originalError: error },
+				retryable: true,
 			});
 		}
 	}
@@ -1065,9 +1120,10 @@ export class SearchPerformanceProviderImpl
 
 			return analysis;
 		} catch (error) {
-			throw new AmazonAPIError("Failed to analyze brand search", {
-				brandName,
-				error,
+			throw new SPAPIError("Failed to analyze brand search", {
+				code: "BRAND_SEARCH_ANALYSIS_ERROR",
+				cause: { brandName, originalError: error },
+				retryable: true,
 			});
 		}
 	}
@@ -1113,9 +1169,10 @@ export class SearchPerformanceProviderImpl
 
 			return analyses;
 		} catch (error) {
-			throw new AmazonAPIError("Failed to detect cannibalization", {
-				keywords,
-				error,
+			throw new SPAPIError("Failed to detect cannibalization", {
+				code: "CANNIBALIZATION_DETECTION_ERROR",
+				cause: { keywords, originalError: error },
+				retryable: true,
 			});
 		}
 	}
@@ -1197,10 +1254,10 @@ export class SearchPerformanceProviderImpl
 
 			return performances;
 		} catch (error) {
-			throw new AmazonAPIError("Failed to get international performance", {
-				asin,
-				marketplaces,
-				error,
+			throw new SPAPIError("Failed to get international performance", {
+				code: "INTERNATIONAL_PERFORMANCE_ERROR",
+				cause: { asin, marketplaces, originalError: error },
+				retryable: true,
 			});
 		}
 	}
@@ -1272,10 +1329,10 @@ export class SearchPerformanceProviderImpl
 
 			return attribution;
 		} catch (error) {
-			throw new AmazonAPIError("Failed to get search attribution", {
-				asin,
-				attributionWindow,
-				error,
+			throw new SPAPIError("Failed to get search attribution", {
+				code: "SEARCH_ATTRIBUTION_ERROR",
+				cause: { asin, attributionWindow, originalError: error },
+				retryable: true,
 			});
 		}
 	}

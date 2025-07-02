@@ -4,7 +4,7 @@
  */
 
 import type { NextFunction, Request, Response } from "express";
-import { CircuitBreakerRegistry } from "../../../../packages/core/src/lib/circuit-breaker";
+import { CircuitBreakerRegistry } from "@ignitabull/core";
 
 export interface HealthStatus {
 	status: "healthy" | "degraded" | "unhealthy";

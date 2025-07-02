@@ -4,17 +4,13 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createMockSession, createMockUser } from "../../test/utils";
 import {
-	createMockOrganization,
-	createMockSession,
-	createMockSupabaseSingleResponse,
-	createMockUser,
-} from "../../../test/utils";
-import type {
-	CreateOrganizationData,
-	SignInData,
-	SignUpData,
-	UpdateProfileData,
+	AuthManager,
+	type CreateOrganizationData,
+	type SignInData,
+	type SignUpData,
+	type UpdateProfileData,
 } from "../lib/auth";
 import { AuthService } from "./auth-service";
 
@@ -25,9 +21,13 @@ const mockSupabaseClient = {
 		signInWithPassword: vi.fn(),
 		signOut: vi.fn(),
 		getUser: vi.fn(),
-		onAuthStateChange: vi.fn(),
+		getSession: vi.fn(),
+		onAuthStateChange: vi.fn(() => ({
+			data: { subscription: { unsubscribe: vi.fn() } },
+		})),
 		resetPasswordForEmail: vi.fn(),
 		updateUser: vi.fn(),
+		refreshSession: vi.fn(),
 	},
 	from: vi.fn(() => ({
 		select: vi.fn().mockReturnThis(),
@@ -49,6 +49,12 @@ describe("AuthService", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 
+		// Mock getSession to return no session by default
+		mockSupabaseClient.auth.getSession.mockResolvedValue({
+			data: { session: null },
+			error: null,
+		});
+
 		// Mock AuthManager
 		mockAuthManager = {
 			getUser: vi.fn(),
@@ -56,9 +62,15 @@ describe("AuthService", () => {
 			setSession: vi.fn(),
 			clearSession: vi.fn(),
 			addEventListener: vi.fn(() => vi.fn()), // Returns unsubscribe function
+			isAuthenticated: vi.fn(),
 		};
 
-		authService = new AuthService(mockAuthManager);
+		// Mock AuthManager.getInstance to return our mock
+		vi.spyOn(AuthManager, "getInstance").mockReturnValue(
+			mockAuthManager as any,
+		);
+
+		authService = new AuthService("https://test.supabase.co", "test-anon-key");
 	});
 
 	describe("signUp", () => {
@@ -255,7 +267,7 @@ describe("AuthService", () => {
 				select: vi.fn().mockReturnThis(),
 				single: vi
 					.fn()
-					.mockResolvedValue(createMockSupabaseSingleResponse(mockUpdatedUser)),
+					.mockResolvedValue({ data: mockUpdatedUser, error: null }),
 			};
 
 			mockSupabaseClient.from.mockReturnValue(mockFromChain);
@@ -299,7 +311,17 @@ describe("AuthService", () => {
 
 			mockAuthManager.getUser.mockReturnValue(mockUser);
 
-			const mockOrganization = createMockOrganization(orgData);
+			const mockOrganization = {
+				id: "org-id",
+				name: orgData.name,
+				slug: orgData.slug,
+				description: orgData.description || null,
+				website: orgData.website || null,
+				industry: orgData.industry || null,
+				owner_id: mockUser.id,
+				created_at: new Date().toISOString(),
+				updated_at: new Date().toISOString(),
+			};
 			const mockFromChain = {
 				select: vi.fn().mockReturnThis(),
 				insert: vi.fn().mockReturnThis(),
@@ -311,9 +333,10 @@ describe("AuthService", () => {
 			// Mock slug availability check (no existing org)
 			mockFromChain.single.mockResolvedValueOnce({ data: null, error: null });
 			// Mock organization creation
-			mockFromChain.single.mockResolvedValueOnce(
-				createMockSupabaseSingleResponse(mockOrganization),
-			);
+			mockFromChain.single.mockResolvedValueOnce({
+				data: mockOrganization,
+				error: null,
+			});
 
 			mockSupabaseClient.from.mockReturnValue(mockFromChain);
 
@@ -398,20 +421,21 @@ describe("AuthService", () => {
 
 	describe("isAuthenticated", () => {
 		it("should return true when user is authenticated", () => {
-			const mockUser = createMockUser();
-			mockAuthManager.getUser.mockReturnValue(mockUser);
+			mockAuthManager.isAuthenticated.mockReturnValue(true);
 
 			const result = authService.isAuthenticated();
 
 			expect(result).toBe(true);
+			expect(mockAuthManager.isAuthenticated).toHaveBeenCalled();
 		});
 
 		it("should return false when user is not authenticated", () => {
-			mockAuthManager.getUser.mockReturnValue(null);
+			mockAuthManager.isAuthenticated.mockReturnValue(false);
 
 			const result = authService.isAuthenticated();
 
 			expect(result).toBe(false);
+			expect(mockAuthManager.isAuthenticated).toHaveBeenCalled();
 		});
 	});
 });

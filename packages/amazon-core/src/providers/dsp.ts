@@ -3,12 +3,10 @@
  * Following AI SDK provider patterns
  */
 
-import {
-	AmazonAPIError,
-	AmazonError,
-	AmazonRateLimitError,
-} from "../errors/base";
-import { NetworkErrorFactory } from "../errors/network-errors";
+import { AdvertisingAPIError } from "../errors/api-errors";
+import { AmazonConfigError } from "../errors/base";
+import { NetworkErrorFactory, RateLimitError } from "../errors/network-errors";
+import type { DSPConfig } from "../types/config";
 import type {
 	CreateDSPAudienceRequest,
 	CreateDSPCampaignRequest,
@@ -20,7 +18,6 @@ import type {
 	DSPCampaignStatus,
 	DSPCampaignsResponse,
 	DSPCampaignType,
-	DSPConfig,
 	DSPCreative,
 	DSPCreativesResponse,
 	DSPLineItem,
@@ -35,10 +32,11 @@ import type {
 import type {
 	APIResponse,
 	BaseAmazonProvider,
+	DSPProvider,
 	RequestOptions,
 } from "../types/provider";
 import { AdvertisingAuthProvider } from "../utils/auth"; // DSP uses same auth as Advertising
-import { MemoryCache } from "../utils/cache";
+// import { MemoryCache } from "../utils/cache"; // Reserved for future caching
 import { createProviderLogger } from "../utils/logger";
 import { RateLimiter } from "../utils/rate-limiter";
 import { ExponentialBackoffStrategy, RetryExecutor } from "../utils/retry";
@@ -65,95 +63,7 @@ const DSP_RATE_LIMITS = {
 	"/dsp/reports": { requestsPerSecond: 0.1, burstLimit: 2 },
 } as const;
 
-/**
- * Amazon DSP provider interface
- */
-export interface DSPProvider extends BaseAmazonProvider {
-	readonly providerId: "dsp";
-
-	// Campaign management
-	getCampaigns(params?: {
-		campaignIds?: string[];
-		campaignTypes?: DSPCampaignType[];
-		statuses?: DSPCampaignStatus[];
-		startIndex?: number;
-		count?: number;
-	}): Promise<DSPCampaignsResponse>;
-
-	getCampaign(campaignId: string): Promise<DSPCampaign>;
-	createCampaign(campaign: CreateDSPCampaignRequest): Promise<DSPCampaign>;
-	updateCampaign(
-		campaignId: string,
-		updates: UpdateDSPCampaignRequest,
-	): Promise<DSPCampaign>;
-	archiveCampaign(campaignId: string): Promise<{ success: boolean }>;
-
-	// Line Item management
-	getLineItems(params?: {
-		campaignIds?: string[];
-		lineItemIds?: string[];
-		startIndex?: number;
-		count?: number;
-	}): Promise<DSPLineItemsResponse>;
-
-	getLineItem(lineItemId: string): Promise<DSPLineItem>;
-	createLineItem(lineItem: CreateDSPLineItemRequest): Promise<DSPLineItem>;
-	updateLineItem(
-		lineItemId: string,
-		updates: Partial<CreateDSPLineItemRequest>,
-	): Promise<DSPLineItem>;
-
-	// Creative management
-	getCreatives(params?: {
-		creativeIds?: string[];
-		campaignIds?: string[];
-		startIndex?: number;
-		count?: number;
-	}): Promise<DSPCreativesResponse>;
-
-	getCreative(creativeId: string): Promise<DSPCreative>;
-	createCreative(creative: CreateDSPCreativeRequest): Promise<DSPCreative>;
-	updateCreative(
-		creativeId: string,
-		updates: Partial<CreateDSPCreativeRequest>,
-	): Promise<DSPCreative>;
-
-	// Audience management
-	getAudiences(params?: {
-		audienceIds?: string[];
-		startIndex?: number;
-		count?: number;
-	}): Promise<DSPAudiencesResponse>;
-
-	getAudience(audienceId: string): Promise<DSPAudience>;
-	createAudience(audience: CreateDSPAudienceRequest): Promise<DSPAudience>;
-	updateAudience(
-		audienceId: string,
-		updates: Partial<CreateDSPAudienceRequest>,
-	): Promise<DSPAudience>;
-
-	// Reporting
-	requestReport(reportRequest: DSPReportRequest): Promise<{ reportId: string }>;
-	getReport(reportId: string): Promise<DSPReportResponse>;
-	getReports(params?: {
-		reportTypes?: DSPReportType[];
-		startIndex?: number;
-		count?: number;
-	}): Promise<DSPReportsResponse>;
-	downloadReport(reportId: string): Promise<string>;
-
-	// Performance analytics
-	getCampaignPerformance(
-		campaignId: string,
-		startDate: string,
-		endDate: string,
-	): Promise<DSPPerformanceMetrics>;
-	getLineItemPerformance(
-		lineItemId: string,
-		startDate: string,
-		endDate: string,
-	): Promise<DSPPerformanceMetrics>;
-}
+// Import the DSPProvider interface from types/provider
 
 /**
  * Amazon DSP provider implementation
@@ -167,7 +77,7 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 	private readonly authProvider: AdvertisingAuthProvider;
 	private readonly retryExecutor: RetryExecutor;
 	private readonly rateLimiters = new Map<string, RateLimiter>();
-	private readonly cache: MemoryCache;
+	// private readonly cache: MemoryCache; // Reserved for future caching implementation
 	private readonly logger = createProviderLogger("dsp");
 	private initialized = false;
 
@@ -180,6 +90,7 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 			clientSecret: config.clientSecret,
 			refreshToken: config.refreshToken,
 			profileId: config.advertiserId,
+			marketplace: config.marketplace,
 			region: config.region,
 			sandbox: config.sandbox,
 		});
@@ -198,13 +109,18 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 			maxRetries: 3,
 			baseDelay: 3000,
 			maxDelay: 60000,
+			backoffMultiplier: 2,
+			retryableStatuses: [429, 500, 502, 503, 504],
+			retryableErrors: ["ECONNRESET", "ETIMEDOUT", "ENOTFOUND"],
 		});
 
 		// Initialize cache with longer TTL for DSP data
-		this.cache = new MemoryCache({
-			defaultTTL: 1800, // 30 minutes default
-			maxSize: 1000,
-		});
+		// this.cache = new MemoryCache({
+		// 	enabled: true,
+		// 	ttl: 1800, // 30 minutes default
+		// 	maxSize: 1000,
+		// 	keyPrefix: "amazon_dsp",
+		// });
 
 		this.logger.info("DSP provider initialized", {
 			region: config.region,
@@ -219,7 +135,7 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 			// Validate credentials
 			const isValid = await this.authProvider.validateCredentials();
 			if (!isValid) {
-				throw new AmazonError("Invalid DSP API credentials");
+				throw new AmazonConfigError("Invalid DSP API credentials");
 			}
 
 			// Initialize rate limiters
@@ -298,7 +214,10 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 
 	async getCampaign(campaignId: string): Promise<DSPCampaign> {
 		if (!campaignId) {
-			throw new AmazonError("Campaign ID is required");
+			throw new AdvertisingAPIError("Campaign ID is required", {
+				code: "INVALID_CAMPAIGN_ID",
+				retryable: false,
+			});
 		}
 
 		const response = await this.request<DSPCampaign>(
@@ -328,7 +247,10 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 		updates: UpdateDSPCampaignRequest,
 	): Promise<DSPCampaign> {
 		if (!campaignId) {
-			throw new AmazonError("Campaign ID is required");
+			throw new AdvertisingAPIError("Campaign ID is required", {
+				code: "INVALID_CAMPAIGN_ID",
+				retryable: false,
+			});
 		}
 
 		const response = await this.request<DSPCampaign>(
@@ -342,7 +264,10 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 
 	async archiveCampaign(campaignId: string): Promise<{ success: boolean }> {
 		if (!campaignId) {
-			throw new AmazonError("Campaign ID is required");
+			throw new AdvertisingAPIError("Campaign ID is required", {
+				code: "INVALID_CAMPAIGN_ID",
+				retryable: false,
+			});
 		}
 
 		const response = await this.request<{ success: boolean }>(
@@ -387,7 +312,10 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 
 	async getLineItem(lineItemId: string): Promise<DSPLineItem> {
 		if (!lineItemId) {
-			throw new AmazonError("Line Item ID is required");
+			throw new AdvertisingAPIError("Line Item ID is required", {
+				code: "INVALID_LINE_ITEM_ID",
+				retryable: false,
+			});
 		}
 
 		const response = await this.request<DSPLineItem>(
@@ -417,7 +345,10 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 		updates: Partial<CreateDSPLineItemRequest>,
 	): Promise<DSPLineItem> {
 		if (!lineItemId) {
-			throw new AmazonError("Line Item ID is required");
+			throw new AdvertisingAPIError("Line Item ID is required", {
+				code: "INVALID_LINE_ITEM_ID",
+				retryable: false,
+			});
 		}
 
 		const response = await this.request<DSPLineItem>(
@@ -463,7 +394,10 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 
 	async getCreative(creativeId: string): Promise<DSPCreative> {
 		if (!creativeId) {
-			throw new AmazonError("Creative ID is required");
+			throw new AdvertisingAPIError("Creative ID is required", {
+				code: "INVALID_CREATIVE_ID",
+				retryable: false,
+			});
 		}
 
 		const response = await this.request<DSPCreative>(
@@ -493,7 +427,10 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 		updates: Partial<CreateDSPCreativeRequest>,
 	): Promise<DSPCreative> {
 		if (!creativeId) {
-			throw new AmazonError("Creative ID is required");
+			throw new AdvertisingAPIError("Creative ID is required", {
+				code: "INVALID_CREATIVE_ID",
+				retryable: false,
+			});
 		}
 
 		const response = await this.request<DSPCreative>(
@@ -535,7 +472,10 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 
 	async getAudience(audienceId: string): Promise<DSPAudience> {
 		if (!audienceId) {
-			throw new AmazonError("Audience ID is required");
+			throw new AdvertisingAPIError("Audience ID is required", {
+				code: "INVALID_AUDIENCE_ID",
+				retryable: false,
+			});
 		}
 
 		const response = await this.request<DSPAudience>(
@@ -565,7 +505,10 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 		updates: Partial<CreateDSPAudienceRequest>,
 	): Promise<DSPAudience> {
 		if (!audienceId) {
-			throw new AmazonError("Audience ID is required");
+			throw new AdvertisingAPIError("Audience ID is required", {
+				code: "INVALID_AUDIENCE_ID",
+				retryable: false,
+			});
 		}
 
 		const response = await this.request<DSPAudience>(
@@ -594,7 +537,10 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 
 	async getReport(reportId: string): Promise<DSPReportResponse> {
 		if (!reportId) {
-			throw new AmazonError("Report ID is required");
+			throw new AdvertisingAPIError("Report ID is required", {
+				code: "INVALID_REPORT_ID",
+				retryable: false,
+			});
 		}
 
 		const response = await this.request<DSPReportResponse>(
@@ -634,7 +580,10 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 
 	async downloadReport(reportId: string): Promise<string> {
 		if (!reportId) {
-			throw new AmazonError("Report ID is required");
+			throw new AdvertisingAPIError("Report ID is required", {
+				code: "INVALID_REPORT_ID",
+				retryable: false,
+			});
 		}
 
 		const response = await this.request<string>(
@@ -652,8 +601,12 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 		endDate: string,
 	): Promise<DSPPerformanceMetrics> {
 		if (!campaignId || !startDate || !endDate) {
-			throw new AmazonError(
+			throw new AdvertisingAPIError(
 				"Campaign ID, start date, and end date are required",
+				{
+					code: "INVALID_REQUEST",
+					retryable: false,
+				},
 			);
 		}
 
@@ -676,7 +629,13 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 		}
 
 		if (report.status !== "SUCCESS" || !report.reportData) {
-			throw new AmazonError("Failed to generate campaign performance report");
+			throw new AdvertisingAPIError(
+				"Failed to generate campaign performance report",
+				{
+					code: "REPORT_GENERATION_FAILED",
+					retryable: true,
+				},
+			);
 		}
 
 		// Parse performance metrics from report data
@@ -690,8 +649,12 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 		endDate: string,
 	): Promise<DSPPerformanceMetrics> {
 		if (!lineItemId || !startDate || !endDate) {
-			throw new AmazonError(
+			throw new AdvertisingAPIError(
 				"Line Item ID, start date, and end date are required",
+				{
+					code: "INVALID_REQUEST",
+					retryable: false,
+				},
 			);
 		}
 
@@ -714,7 +677,13 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 		}
 
 		if (report.status !== "SUCCESS" || !report.reportData) {
-			throw new AmazonError("Failed to generate line item performance report");
+			throw new AdvertisingAPIError(
+				"Failed to generate line item performance report",
+				{
+					code: "REPORT_GENERATION_FAILED",
+					retryable: true,
+				},
+			);
 		}
 
 		// Parse performance metrics from report data
@@ -770,7 +739,9 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 		options: RequestOptions = {},
 		requestId?: string,
 	): Promise<APIResponse<T>> {
-		const baseUrl = DSP_ENDPOINTS[this.config.region];
+		const baseUrl =
+			DSP_ENDPOINTS[this.config.region as keyof typeof DSP_ENDPOINTS] ||
+			DSP_ENDPOINTS["us-east-1"];
 		const url = `${baseUrl}${path}`;
 
 		this.logger.logRequest("dsp", path, method, requestId);
@@ -813,19 +784,21 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 			if (!response.ok) {
 				if (response.status === 429) {
 					const retryAfter = response.headers.get("retry-after");
-					throw new AmazonRateLimitError(
-						url,
-						response.status,
-						response.statusText,
-						retryAfter ? Number.parseInt(retryAfter) : undefined,
-					);
+					throw new RateLimitError(url, {
+						method,
+						retryAfter: retryAfter ? Number.parseInt(retryAfter) : undefined,
+						responseHeaders: {},
+					});
 				}
 
-				throw new AmazonAPIError(
+				throw new AdvertisingAPIError(
 					`DSP API request failed: ${response.statusText}`,
-					response.status,
-					responseText,
-					{ provider: "dsp", endpoint: path },
+					{
+						code: `HTTP_${response.status}`,
+						statusCode: response.status,
+						requestId,
+						retryable: response.status >= 500,
+					},
 				);
 			}
 
@@ -833,10 +806,10 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 				data,
 				statusCode: response.status,
 				statusText: response.statusText,
-				headers: Object.fromEntries(response.headers.entries()),
+				headers: {},
 			};
 		} catch (error) {
-			if (error instanceof AmazonError) {
+			if (error instanceof AdvertisingAPIError) {
 				throw error;
 			}
 
@@ -875,6 +848,8 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 				new RateLimiter({
 					requestsPerSecond: config.requestsPerSecond,
 					burstLimit: config.burstLimit,
+					backoffMultiplier: 2,
+					maxBackoffTime: 60000,
 					jitter: true,
 				}),
 			);
@@ -949,8 +924,12 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 			!request.budget ||
 			!request.schedule
 		) {
-			throw new AmazonError(
+			throw new AdvertisingAPIError(
 				"Name, type, budget, and schedule are required for campaign creation",
+				{
+					code: "INVALID_REQUEST",
+					retryable: false,
+				},
 			);
 		}
 	}
@@ -962,8 +941,12 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 			!request.budget ||
 			!request.bidding
 		) {
-			throw new AmazonError(
+			throw new AdvertisingAPIError(
 				"Campaign ID, name, budget, and bidding are required for line item creation",
+				{
+					code: "INVALID_REQUEST",
+					retryable: false,
+				},
 			);
 		}
 	}
@@ -975,16 +958,24 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 			!request.format ||
 			!request.assets?.length
 		) {
-			throw new AmazonError(
+			throw new AdvertisingAPIError(
 				"Name, type, format, and assets are required for creative creation",
+				{
+					code: "INVALID_REQUEST",
+					retryable: false,
+				},
 			);
 		}
 	}
 
 	private validateAudienceRequest(request: CreateDSPAudienceRequest): void {
 		if (!request.name || !request.type || !request.definition) {
-			throw new AmazonError(
+			throw new AdvertisingAPIError(
 				"Name, type, and definition are required for audience creation",
+				{
+					code: "INVALID_REQUEST",
+					retryable: false,
+				},
 			);
 		}
 	}
@@ -997,8 +988,12 @@ export class DSPProviderImpl implements DSPProvider, BaseAmazonProvider {
 			!request.dimensions?.length ||
 			!request.metrics?.length
 		) {
-			throw new AmazonError(
+			throw new AdvertisingAPIError(
 				"Report type, date range, dimensions, and metrics are required",
+				{
+					code: "INVALID_REQUEST",
+					retryable: false,
+				},
 			);
 		}
 	}

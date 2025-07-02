@@ -18,6 +18,7 @@ async function initializeAmazonService(): Promise<AmazonService> {
 			lwaClientId: process.env.AMAZON_LWA_CLIENT_ID!,
 			lwaClientSecret: process.env.AMAZON_LWA_CLIENT_SECRET!,
 			region: "us-east-1",
+			marketplace: "ATVPDKIKX0DER", // US marketplace
 		},
 		advertising: {
 			clientId: process.env.AMAZON_ADV_CLIENT_ID!,
@@ -25,12 +26,15 @@ async function initializeAmazonService(): Promise<AmazonService> {
 			refreshToken: process.env.AMAZON_ADV_REFRESH_TOKEN!,
 			profileId: process.env.AMAZON_ADV_PROFILE_ID!,
 			region: "us-east-1",
+			marketplace: "ATVPDKIKX0DER", // US marketplace
 		},
 		associates: {
 			accessKey: process.env.AMAZON_ASSOCIATES_ACCESS_KEY!,
 			secretKey: process.env.AMAZON_ASSOCIATES_SECRET_KEY!,
 			partnerTag: process.env.AMAZON_ASSOCIATES_PARTNER_TAG!,
+			partnerType: "Associates",
 			region: "us-east-1",
+			marketplace: "ATVPDKIKX0DER", // US marketplace
 		},
 		globalConfig: {
 			debug: process.env.NODE_ENV === "development",
@@ -120,12 +124,7 @@ async function monitorServiceHealth(amazonService: AmazonService) {
 
 		console.log("\nProvider Status:");
 		health.providers.forEach((provider) => {
-			const statusEmoji =
-				provider.status === "healthy"
-					? "✅"
-					: provider.status === "degraded"
-						? "⚠️"
-						: "❌";
+			const statusEmoji = provider.status === "healthy" ? "✅" : "❌";
 			console.log(`${statusEmoji} ${provider.providerId}: ${provider.status}`);
 			if (provider.responseTime) {
 				console.log(`   Response Time: ${provider.responseTime}ms`);

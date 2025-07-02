@@ -6,7 +6,6 @@
 import neo4j, {
 	type Driver,
 	type Node,
-	type Record,
 	type Result,
 	type Session,
 } from "neo4j-driver";
@@ -48,11 +47,11 @@ export class Neo4jService {
 					connectionAcquisitionTimeout:
 						this.config.connectionAcquisitionTimeout || 60000,
 					disableLosslessIntegers: this.config.disableLosslessIntegers || true,
-					logging: this.config.logging || {
-						level: "INFO",
-						logger: (level, message) =>
+					logging: (this.config.logging || {
+						level: "info",
+						logger: (level: any, message: string) =>
 							console.log(`[Neo4j ${level}] ${message}`),
-					},
+					}) as any,
 				},
 			);
 
@@ -128,8 +127,10 @@ export class Neo4jService {
 					await session.run(constraint);
 				} catch (error) {
 					// Ignore errors for existing constraints
-					if (!error.message.includes("already exists")) {
-						console.warn(`Warning creating constraint: ${error.message}`);
+					const errorMessage =
+						error instanceof Error ? error.message : String(error);
+					if (!errorMessage.includes("already exists")) {
+						console.warn(`Warning creating constraint: ${errorMessage}`);
 					}
 				}
 			}
@@ -140,11 +141,13 @@ export class Neo4jService {
 					await session.run(index);
 				} catch (error) {
 					// Ignore errors for existing indexes
+					const errorMessage =
+						error instanceof Error ? error.message : String(error);
 					if (
-						!error.message.includes("already exists") &&
-						!error.message.includes("An equivalent index already exists")
+						!errorMessage.includes("already exists") &&
+						!errorMessage.includes("An equivalent index already exists")
 					) {
-						console.warn(`Warning creating index: ${error.message}`);
+						console.warn(`Warning creating index: ${errorMessage}`);
 					}
 				}
 			}
@@ -165,7 +168,7 @@ export class Neo4jService {
 	// Core Query Methods
 	async runQuery(
 		query: string,
-		parameters: Record<string, any> = {},
+		parameters: any = {},
 	): Promise<Result> {
 		const session = this.getSession();
 
@@ -177,7 +180,7 @@ export class Neo4jService {
 	}
 
 	async runCypherQuery(cypherQuery: CypherQuery): Promise<Result> {
-		return this.runQuery(cypherQuery.query, cypherQuery.parameters);
+		return this.runQuery(cypherQuery.query, cypherQuery.parameters as any);
 	}
 
 	// Product Management
@@ -475,7 +478,7 @@ export class Neo4jService {
 		const result = await this.runQuery(query, { asin });
 
 		return result.records.map((record) => {
-			const competitor = this.nodeToProductNode(record.get("comp"));
+			const competitor = this.nodeToCompetitorNode(record.get("comp"));
 			const relationship = record.get("r");
 			const sharedCustomers = record
 				.get("sharedCustomers")
@@ -513,7 +516,7 @@ export class Neo4jService {
 		const nodes = result.records[0].get("nodes");
 
 		// Calculate centrality metrics (simplified implementation)
-		const centralityMetrics = {
+		const centralityMetrics: any = {
 			betweenness: {},
 			closeness: {},
 			degree: {},
@@ -564,6 +567,25 @@ export class Neo4jService {
 		};
 	}
 
+	private nodeToCompetitorNode(node: Node): CompetitorNode {
+		return {
+			identity: node.identity.toString(),
+			labels: ["Competitor"],
+			properties: {
+				asin: node.properties.asin,
+				brand: node.properties.brand,
+				title: node.properties.title,
+				category: node.properties.category,
+				price: node.properties.price,
+				rating: node.properties.rating,
+				salesRank: node.properties.salesRank,
+				marketShare: node.properties.marketShare,
+				createdAt: node.properties.createdAt,
+				updatedAt: node.properties.updatedAt,
+			},
+		};
+	}
+
 	private nodeToCustomerNode(node: Node): CustomerNode {
 		return {
 			identity: node.identity.toString(),
@@ -597,24 +619,6 @@ export class Neo4jService {
 		};
 	}
 
-	private nodeToCompetitorNode(node: Node): CompetitorNode {
-		return {
-			identity: node.identity.toString(),
-			labels: ["Competitor"],
-			properties: {
-				asin: node.properties.asin,
-				brand: node.properties.brand,
-				title: node.properties.title,
-				category: node.properties.category,
-				price: node.properties.price,
-				rating: node.properties.rating,
-				salesRank: node.properties.salesRank,
-				marketShare: node.properties.marketShare,
-				createdAt: node.properties.createdAt,
-				updatedAt: node.properties.updatedAt,
-			},
-		};
-	}
 
 	private analyzeBehaviorPattern(
 		purchases: any[],
@@ -643,29 +647,25 @@ export class Neo4jService {
 		const categories = products.map((p) => p.properties.category);
 		const brands = products.map((p) => p.properties.brand).filter(Boolean);
 
-		const categoryCount = categories.reduce(
-			(acc, cat) => {
-				acc[cat] = (acc[cat] || 0) + 1;
-				return acc;
-			},
-			{} as Record<string, number>,
-		);
+		const categoryCount: any = {};
+		categories.forEach((cat) => {
+			categoryCount[cat] = (categoryCount[cat] || 0) + 1;
+		});
 
-		const brandCount = brands.reduce(
-			(acc, brand) => {
-				acc[brand] = (acc[brand] || 0) + 1;
-				return acc;
-			},
-			{} as Record<string, number>,
-		);
+		const brandCount: any = {};
+		brands.forEach((brand) => {
+			if (brand) {
+				brandCount[brand] = (brandCount[brand] || 0) + 1;
+			}
+		});
 
 		const topCategories = Object.entries(categoryCount)
-			.sort(([, a], [, b]) => b - a)
+			.sort(([, a], [, b]) => (b as number) - (a as number))
 			.slice(0, 3)
 			.map(([cat]) => cat);
 
 		const topBrands = Object.entries(brandCount)
-			.sort(([, a], [, b]) => b - a)
+			.sort(([, a], [, b]) => (b as number) - (a as number))
 			.slice(0, 2)
 			.map(([brand]) => brand);
 
@@ -732,7 +732,9 @@ export class Neo4jService {
 				relationships: record.get("relationships").toNumber(),
 			};
 		} catch (error) {
-			throw new Error(`Neo4j health check failed: ${error.message}`);
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
+			throw new Error(`Neo4j health check failed: ${errorMessage}`);
 		}
 	}
 }

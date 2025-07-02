@@ -3,9 +3,9 @@
  * Analyzes Amazon data to provide intelligent insights and recommendations
  */
 
-import type { AdvertisingProvider } from "../providers/advertising";
+// import type { AdvertisingProvider } from "../providers/advertising"; // Reserved for future use
 import type { BrandAnalyticsProvider } from "../providers/brand-analytics";
-import type { DSPProvider } from "../providers/dsp";
+// import type { DSPProvider } from "../providers/dsp"; // Reserved for future use
 import type { SearchPerformanceProvider } from "../providers/search-performance";
 import type {
 	MarketBasketAnalysis,
@@ -181,16 +181,16 @@ export interface AIInsightsConfig {
 	customRules?: Array<{
 		name: string;
 		condition: (data: {
-			searchMetrics: SearchQueryMetrics;
+			searchMetrics: SearchQueryMetrics[];
 			rankings: KeywordRanking[];
 			listingQuality: ListingQualityScore;
-			competitors: CompetitorAnalysis;
+			competitors: CompetitorSearchAnalysis[];
 		}) => boolean;
 		insight: (data: {
-			searchMetrics: SearchQueryMetrics;
+			searchMetrics: SearchQueryMetrics[];
 			rankings: KeywordRanking[];
 			listingQuality: ListingQualityScore;
-			competitors: CompetitorAnalysis;
+			competitors: CompetitorSearchAnalysis[];
 		}) => Partial<AIInsight>;
 	}>;
 }
@@ -200,14 +200,19 @@ export interface AIInsightsConfig {
  */
 export class AIInsightsEngine {
 	private readonly logger = createProviderLogger("ai-insights-engine");
-	private readonly cache = new MemoryCache({ defaultTTL: 3600, maxSize: 500 });
+	private readonly cache = new MemoryCache({
+		enabled: true,
+		ttl: 3600,
+		maxSize: 500,
+		keyPrefix: "amazon_ai_insights",
+	});
 	private readonly config: Required<AIInsightsConfig>;
 
 	constructor(
 		private readonly searchProvider: SearchPerformanceProvider,
 		private readonly brandAnalyticsProvider: BrandAnalyticsProvider,
-		private readonly advertisingProvider: AdvertisingProvider,
-		private readonly dspProvider: DSPProvider,
+		// private readonly advertisingProvider: AdvertisingProvider, // Reserved for future advertising insights
+		// private readonly dspProvider: DSPProvider, // Reserved for future DSP insights
 		config: AIInsightsConfig = {},
 	) {
 		this.config = {
@@ -298,7 +303,7 @@ export class AIInsightsEngine {
 			);
 			return categorizedInsights;
 		} catch (error) {
-			this.logger.error("Failed to generate product insights", { asin, error });
+			this.logger.error("Failed to generate product insights", error as Error);
 			throw error;
 		}
 	}
@@ -314,23 +319,33 @@ export class AIInsightsEngine {
 			const opportunities: MarketOpportunity[] = [];
 
 			// Get market data
-			const [marketBasket, searchQueries, _repeatPurchase] = await Promise.all([
-				this.brandAnalyticsProvider.getMarketBasketAnalysis(
+			const searchQueries =
+				await this.brandAnalyticsProvider.getSearchQueryPerformance(
+					category,
 					marketplaceId,
-					this.getDateRange(),
-				),
-				this.brandAnalyticsProvider.getSearchQueryPerformance(
-					marketplaceId,
-					this.getDateRange(),
-				),
-				this.brandAnalyticsProvider.getRepeatPurchaseBehavior(
-					marketplaceId,
-					this.getDateRange(),
-				),
-			]);
+					{
+						startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+							.toISOString()
+							.split("T")[0],
+						endDate: new Date().toISOString().split("T")[0],
+					},
+				);
+
+			const marketBasket =
+				await this.brandAnalyticsProvider.getMarketBasketAnalysis(
+					"dummy-report-id", // TODO: Get actual report ID
+				);
+
+			// Reserved for future repeat purchase analysis
+			// const _repeatPurchase =
+			// 	await this.brandAnalyticsProvider.getRepeatPurchaseBehavior(
+			// 		category,
+			// 		marketplaceId,
+			// 		"90_DAYS",
+			// 	);
 
 			// Analyze untapped keywords
-			const untappedKeywords = this.findUntappedKeywords(searchQueries);
+			const untappedKeywords = this.findUntappedKeywords([searchQueries]);
 			for (const keyword of untappedKeywords) {
 				opportunities.push({
 					opportunityType: "UNTAPPED_KEYWORD",
@@ -362,20 +377,21 @@ export class AIInsightsEngine {
 			}
 
 			// Analyze market gaps from basket analysis
-			const marketGaps = this.findMarketGaps(marketBasket);
+			const marketGaps = this.findMarketGaps([marketBasket]);
 			opportunities.push(...marketGaps);
 
 			// Identify seasonal opportunities
-			const seasonalOpportunities =
-				await this.findSeasonalOpportunities(searchQueries);
+			const seasonalOpportunities = await this.findSeasonalOpportunities([
+				searchQueries,
+			]);
 			opportunities.push(...seasonalOpportunities);
 
 			return opportunities;
 		} catch (error) {
-			this.logger.error("Failed to identify market opportunities", {
-				category,
-				error,
-			});
+			this.logger.error(
+				"Failed to identify market opportunities",
+				error as Error,
+			);
 			throw error;
 		}
 	}
@@ -405,11 +421,10 @@ export class AIInsightsEngine {
 					throw new Error(`Unknown prediction type: ${predictionType}`);
 			}
 		} catch (error) {
-			this.logger.error("Failed to generate predictive analytics", {
-				asin,
-				predictionType,
-				error,
-			});
+			this.logger.error(
+				"Failed to generate predictive analytics",
+				error as Error,
+			);
 			throw error;
 		}
 	}
@@ -433,7 +448,9 @@ export class AIInsightsEngine {
 			}
 
 			// Competitive positioning strategy
-			if (data.competitorThreats.filter((t) => t.level === "HIGH").length > 2) {
+			if (
+				data.competitorThreats.filter((t) => t.threat === "HIGH").length > 2
+			) {
 				recommendations.push(this.createCompetitivePositioningStrategy(data));
 			}
 
@@ -444,10 +461,10 @@ export class AIInsightsEngine {
 
 			return recommendations;
 		} catch (error) {
-			this.logger.error("Failed to generate strategic recommendations", {
-				asin,
-				error,
-			});
+			this.logger.error(
+				"Failed to generate strategic recommendations",
+				error as Error,
+			);
 			throw error;
 		}
 	}
@@ -763,12 +780,16 @@ export class AIInsightsEngine {
 	}> {
 		// Find keywords with high search volume but low competition
 		return queries
-			.filter((q) => q.searchFrequencyRank < 1000 && q.clickShare < 5)
+			.filter((q) => q.searchVolume > 1000 && q.clickThroughRate < 0.05)
 			.map((q) => ({
-				keyword: q.searchQuery,
-				searchVolume: q.impressions,
+				keyword: q.query,
+				searchVolume: q.searchVolume,
 				competitionLevel:
-					q.clickShare < 2 ? "LOW" : q.clickShare < 5 ? "MEDIUM" : "HIGH",
+					q.clickThroughRate < 0.02
+						? ("LOW" as const)
+						: q.clickThroughRate < 0.05
+							? ("MEDIUM" as const)
+							: ("HIGH" as const),
 			}))
 			.slice(0, 10);
 	}
@@ -994,7 +1015,7 @@ export class AIInsightsEngine {
 		_marketplaceId: string,
 	): Promise<HistoricalDataPoint[]> {
 		// Would fetch historical data from database
-		return {};
+		return [];
 	}
 
 	private async gatherComprehensiveData(
@@ -1015,6 +1036,11 @@ export class AIInsightsEngine {
 			marketShare: 5,
 			competitorThreats: [],
 			growthRate: 15,
+			marketPosition: 3,
+			currentGrowth: 15,
+			targetGrowth: 50,
+			revenue: 50000,
+			constraints: [],
 		};
 	}
 

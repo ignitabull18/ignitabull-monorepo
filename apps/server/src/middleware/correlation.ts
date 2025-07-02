@@ -7,7 +7,7 @@ import type { NextFunction, Request, Response } from "express";
 import {
 	createRequestLogger,
 	Logger,
-} from "../../../../packages/core/src/lib/logger";
+} from "@ignitabull/core";
 
 // Extend Express Request interface
 declare global {

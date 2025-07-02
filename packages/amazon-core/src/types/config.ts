@@ -14,6 +14,11 @@ export interface BaseAmazonConfig {
 	debug?: boolean;
 	timeout?: number;
 	retries?: number;
+	retry?: RetryConfig;
+	cache?: CacheConfig;
+	rateLimit?: RateLimitConfig;
+	logger?: LoggerConfig;
+	sandbox?: boolean;
 }
 
 /**
@@ -27,6 +32,7 @@ export interface SPAPIConfig extends BaseAmazonConfig {
 	lwaClientSecret: string;
 	sellerId?: string;
 	roleArn?: string;
+	sandbox?: boolean;
 }
 
 /**
@@ -38,6 +44,9 @@ export interface AdvertisingConfig extends BaseAmazonConfig {
 	refreshToken: string;
 	profileId: string;
 	apiVersion?: string;
+	retry?: RetryConfig;
+	cache?: CacheConfig;
+	sandbox?: boolean;
 }
 
 /**
@@ -49,6 +58,8 @@ export interface AssociatesConfig extends BaseAmazonConfig {
 	partnerTag: string;
 	partnerType: "Associates";
 	host?: string;
+	retry?: RetryConfig;
+	cache?: CacheConfig;
 }
 
 /**
@@ -61,6 +72,7 @@ export interface BrandAnalyticsConfig extends BaseAmazonConfig {
 	advertisingAccountId: string;
 	brandEntityId?: string;
 	defaultMarketplaceId?: string;
+	sandbox?: boolean;
 }
 
 /**
@@ -176,6 +188,21 @@ export interface CacheConfig {
 	ttl: number; // Time to live in seconds
 	maxSize: number; // Maximum cache size
 	keyPrefix: string;
+}
+
+/**
+ * Log levels
+ */
+export type LogLevel = "trace" | "debug" | "info" | "warn" | "error" | "fatal";
+
+/**
+ * Logger configuration
+ */
+export interface LoggerConfig {
+	level: LogLevel;
+	enableConsole: boolean;
+	enableFile: boolean;
+	format: "json" | "pretty";
 }
 
 /**

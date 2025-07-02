@@ -4,7 +4,7 @@
  */
 
 import type { Request, Response } from "express";
-import { InfluencerMarketingService } from "../../../../packages/core/src/services/influencer-marketing";
+import { InfluencerMarketingService } from "@ignitabull/core";
 import InfluencerRepository from "../../services/influencer-repository";
 
 const repository = new InfluencerRepository();

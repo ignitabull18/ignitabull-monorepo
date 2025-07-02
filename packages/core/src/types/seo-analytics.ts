@@ -542,15 +542,4 @@ export interface UpdateSEOInsight
 export interface UpdateSEOAudit
 	extends Partial<Omit<CreateSEOAudit, "domain">> {}
 
-export default {
-	SEOMetrics,
-	KeywordRanking,
-	BacklinkProfile,
-	TechnicalSEO,
-	ContentAnalysis,
-	SEOInsight,
-	SEOReport,
-	SEOAudit,
-	SEOOpportunity,
-	CompetitorAnalysis,
-};
+// Type exports are handled by export interface statements above

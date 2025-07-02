@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import "./globals.css";
-import { AuthProvider } from "@/lib/auth-provider";
+import "@/index.css";
+import Providers from "@/components/providers";
 import { cn } from "@/lib/utils";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
+	metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "https://ignitabull.com"),
 	title: "Ignitabull - Amazon Business Intelligence Platform",
 	description:
 		"Comprehensive analytics and optimization platform for Amazon sellers, brands, and agencies.",
@@ -111,7 +112,7 @@ export default function RootLayout({
 					inter.className,
 				)}
 			>
-				<AuthProvider>{children}</AuthProvider>
+				<Providers>{children}</Providers>
 
 				{/* Analytics Scripts */}
 				{process.env.NODE_ENV === "production" && (

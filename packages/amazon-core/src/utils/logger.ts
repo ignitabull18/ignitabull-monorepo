@@ -611,12 +611,36 @@ export function logWithContext(
 	message: string,
 	requestId: string,
 	provider?: string,
-	context?: Record<string, any>,
+	context?: Record<string, any> | Error,
 ): void {
 	const logger = getLogger();
-	logger[level](message, {
-		...context,
-		requestId,
-		provider,
-	});
+	
+	// Handle different logger method signatures
+	if (level === "error" && context instanceof Error) {
+		// error() method expects Error as second parameter
+		logger.error(message, context, { requestId, provider });
+	} else if (level === "error") {
+		// For error level without Error object
+		logger.error(message, undefined, { ...context, requestId, provider });
+	} else {
+		// Other log levels expect context as second parameter
+		const logContext = context instanceof Error 
+			? { error: context, requestId, provider }
+			: { ...context, requestId, provider };
+		
+		switch (level) {
+			case "warn":
+				logger.warn(message, logContext);
+				break;
+			case "info":
+				logger.info(message, logContext);
+				break;
+			case "debug":
+				logger.debug(message, logContext);
+				break;
+			case "trace":
+				logger.trace(message, logContext);
+				break;
+		}
+	}
 }

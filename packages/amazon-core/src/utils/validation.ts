@@ -3,7 +3,7 @@
  * Following AI SDK validation patterns
  */
 
-import { AmazonValidationError } from "../errors/base";
+import { AmazonValidationError } from "../errors/validation-errors";
 
 /**
  * Validation result interface
@@ -643,8 +643,7 @@ export class ValidationUtils {
 				: `Validation failed: ${result.errors.map((e) => e.message).join(", ")}`;
 
 			throw new AmazonValidationError(message, {
-				validationErrors: result.errors,
-				validationWarnings: result.warnings,
+				cause: { errors: result.errors, warnings: result.warnings },
 			});
 		}
 	}

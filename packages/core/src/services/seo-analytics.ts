@@ -570,7 +570,7 @@ export class SEOAnalyticsService {
 				url,
 				statusCode: response.status,
 				content,
-				headers: Object.fromEntries(response.headers.entries()),
+				headers: Object.fromEntries([...(response.headers as any)]),
 				loadTime,
 				size,
 				links: this.extractLinks(content, url),
@@ -623,7 +623,7 @@ export class SEOAnalyticsService {
 		const twitterCard = this.extractTwitterCard(content);
 		const schemaMarkup = this.extractSchemaMarkup(content);
 
-		const issues = this.identifyPageIssues({
+		const pageAnalysis: PageAnalysis = {
 			url,
 			title,
 			metaDescription,
@@ -638,7 +638,10 @@ export class SEOAnalyticsService {
 			openGraph,
 			twitterCard,
 			schemaMarkup,
-		});
+			issues: [],
+		};
+
+		const issues = this.identifyPageIssues(pageAnalysis);
 
 		return {
 			url,

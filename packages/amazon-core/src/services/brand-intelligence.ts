@@ -185,7 +185,12 @@ export interface BrandIntelligenceConfig {
  */
 export class BrandIntelligenceService {
 	private readonly logger = createProviderLogger("brand-intelligence");
-	private readonly cache = new MemoryCache({ defaultTTL: 1800, maxSize: 100 }); // 30 min cache
+	private readonly cache = new MemoryCache({
+		enabled: true,
+		ttl: 1800,
+		maxSize: 100,
+		keyPrefix: "amazon_brand_intel",
+	}); // 30 min cache
 	private readonly config: BrandIntelligenceConfig;
 
 	constructor(
@@ -579,7 +584,7 @@ export class BrandIntelligenceService {
 					.filter((insight) => insight.seasonality)
 					.map((insight) => ({
 						searchTerm: insight.searchTerm,
-						peakMonths: insight.seasonality?.peakMonths,
+						peakMonths: insight.seasonality?.peakMonths || [],
 						volumeVariation: 45,
 						planningRecommendations: ["Increase ad spend in peak months"],
 					})),

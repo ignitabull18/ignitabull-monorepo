@@ -8,7 +8,7 @@ import type {
 	FollowUpRule,
 	VisitorLead,
 	VisitorSession,
-} from "../../../packages/core/src/types/visitor-tracking";
+} from "@ignitabull/core";
 import { getEmail } from "../lib/email";
 import { type EmailService, sendLeadNotification } from "./email-service";
 import VisitorTrackingRepository from "./visitor-tracking-repository";

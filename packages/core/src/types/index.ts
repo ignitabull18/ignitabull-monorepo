@@ -3,11 +3,6 @@
  * Centralized type exports for the core package
  */
 
-// Authentication types
-export * from "./auth";
-// Database types
-export type { Database } from "./database";
-
 // Email types
 export * from "./email";
 // Influencer marketing types

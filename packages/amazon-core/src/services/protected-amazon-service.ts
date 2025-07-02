@@ -5,7 +5,7 @@
 
 import { CircuitBreakerPresets } from "../../../core/src/lib/circuit-breaker";
 import { ProtectedServiceBase } from "../../../core/src/services/protected-service-base";
-import type { AmazonCredentials, ApiResponse } from "../types";
+import type { AmazonCredentials } from "../types";
 
 export interface AmazonServiceConfig {
 	credentials: AmazonCredentials;
@@ -48,9 +48,18 @@ export class ProtectedAmazonService extends ProtectedServiceBase {
 	protected async makeApiRequest<T>(
 		operation: () => Promise<T>,
 		operationName: string,
-	): Promise<ApiResponse<T>> {
+	): Promise<{
+		success: boolean;
+		data: T | null;
+		error?: string;
+		metadata: {
+			operation: string;
+			timestamp: string;
+			region: string;
+		};
+	}> {
 		try {
-			const result = await this.executeProtected(operation);
+			const result = await (this as any).executeProtected(operation);
 			return {
 				success: true,
 				data: result,
@@ -82,7 +91,16 @@ export class ProtectedAmazonService extends ProtectedServiceBase {
 		asin?: string;
 		marketplace: string;
 		includeAttributes?: string[];
-	}): Promise<ApiResponse<any[]>> {
+	}): Promise<{
+		success: boolean;
+		data: any[] | null;
+		error?: string;
+		metadata: {
+			operation: string;
+			timestamp: string;
+			region: string;
+		};
+	}> {
 		return this.makeApiRequest(async () => {
 			// Simulate Amazon SP-API call
 			const queryParams = new URLSearchParams({
@@ -100,7 +118,10 @@ export class ProtectedAmazonService extends ProtectedServiceBase {
 				{
 					headers: {
 						Authorization: `Bearer ${this.config.credentials.accessToken}`,
-						"Amazon-Advertising-API-ClientId": this.config.credentials.clientId,
+						...(this.config.credentials.clientId && {
+							"Amazon-Advertising-API-ClientId":
+								this.config.credentials.clientId,
+						}),
 						"Content-Type": "application/json",
 					},
 				},
@@ -123,7 +144,16 @@ export class ProtectedAmazonService extends ProtectedServiceBase {
 		portfolioId?: string;
 		campaignType?: string;
 		state?: string;
-	}): Promise<ApiResponse<any[]>> {
+	}): Promise<{
+		success: boolean;
+		data: any[] | null;
+		error?: string;
+		metadata: {
+			operation: string;
+			timestamp: string;
+			region: string;
+		};
+	}> {
 		return this.makeApiRequest(async () => {
 			const queryParams = new URLSearchParams({
 				...(params.portfolioId && { portfolioId: params.portfolioId }),
@@ -136,7 +166,10 @@ export class ProtectedAmazonService extends ProtectedServiceBase {
 				{
 					headers: {
 						Authorization: `Bearer ${this.config.credentials.accessToken}`,
-						"Amazon-Advertising-API-ClientId": this.config.credentials.clientId,
+						...(this.config.credentials.clientId && {
+							"Amazon-Advertising-API-ClientId":
+								this.config.credentials.clientId,
+						}),
 						"Content-Type": "application/json",
 					},
 				},
@@ -163,7 +196,16 @@ export class ProtectedAmazonService extends ProtectedServiceBase {
 		dailyBudget: number;
 		startDate: string;
 		endDate?: string;
-	}): Promise<ApiResponse<any>> {
+	}): Promise<{
+		success: boolean;
+		data: any | null;
+		error?: string;
+		metadata: {
+			operation: string;
+			timestamp: string;
+			region: string;
+		};
+	}> {
 		return this.makeApiRequest(async () => {
 			const response = await fetch(
 				"https://advertising-api.amazon.com/v2/campaigns",
@@ -171,7 +213,10 @@ export class ProtectedAmazonService extends ProtectedServiceBase {
 					method: "POST",
 					headers: {
 						Authorization: `Bearer ${this.config.credentials.accessToken}`,
-						"Amazon-Advertising-API-ClientId": this.config.credentials.clientId,
+						...(this.config.credentials.clientId && {
+							"Amazon-Advertising-API-ClientId":
+								this.config.credentials.clientId,
+						}),
 						"Content-Type": "application/json",
 					},
 					body: JSON.stringify(campaignData),
@@ -197,7 +242,16 @@ export class ProtectedAmazonService extends ProtectedServiceBase {
 		startDate: string;
 		endDate: string;
 		metrics?: string[];
-	}): Promise<ApiResponse<any>> {
+	}): Promise<{
+		success: boolean;
+		data: any | null;
+		error?: string;
+		metadata: {
+			operation: string;
+			timestamp: string;
+			region: string;
+		};
+	}> {
 		return this.makeApiRequest(async () => {
 			const reportData = {
 				reportType: params.reportType,
@@ -215,7 +269,10 @@ export class ProtectedAmazonService extends ProtectedServiceBase {
 					method: "POST",
 					headers: {
 						Authorization: `Bearer ${this.config.credentials.accessToken}`,
-						"Amazon-Advertising-API-ClientId": this.config.credentials.clientId,
+						...(this.config.credentials.clientId && {
+							"Amazon-Advertising-API-ClientId":
+								this.config.credentials.clientId,
+						}),
 						"Content-Type": "application/json",
 					},
 					body: JSON.stringify(reportData),
@@ -235,14 +292,26 @@ export class ProtectedAmazonService extends ProtectedServiceBase {
 	/**
 	 * Test connection with protection
 	 */
-	async testConnection(): Promise<ApiResponse<{ status: string }>> {
+	async testConnection(): Promise<{
+		success: boolean;
+		data: { status: string; profileCount?: number } | null;
+		error?: string;
+		metadata: {
+			operation: string;
+			timestamp: string;
+			region: string;
+		};
+	}> {
 		return this.makeApiRequest(async () => {
 			const response = await fetch(
 				"https://advertising-api.amazon.com/v2/profiles",
 				{
 					headers: {
 						Authorization: `Bearer ${this.config.credentials.accessToken}`,
-						"Amazon-Advertising-API-ClientId": this.config.credentials.clientId,
+						...(this.config.credentials.clientId && {
+							"Amazon-Advertising-API-ClientId":
+								this.config.credentials.clientId,
+						}),
 						"Content-Type": "application/json",
 					},
 				},
@@ -265,9 +334,16 @@ export class ProtectedAmazonService extends ProtectedServiceBase {
 	/**
 	 * Refresh access token with protection
 	 */
-	async refreshToken(): Promise<
-		ApiResponse<{ accessToken: string; expiresIn: number }>
-	> {
+	async refreshToken(): Promise<{
+		success: boolean;
+		data: { accessToken: string; expiresIn: number } | null;
+		error?: string;
+		metadata: {
+			operation: string;
+			timestamp: string;
+			region: string;
+		};
+	}> {
 		return this.makeApiRequest(async () => {
 			const response = await fetch("https://api.amazon.com/auth/o2/token", {
 				method: "POST",
@@ -276,9 +352,15 @@ export class ProtectedAmazonService extends ProtectedServiceBase {
 				},
 				body: new URLSearchParams({
 					grant_type: "refresh_token",
-					client_id: this.config.credentials.clientId,
-					client_secret: this.config.credentials.clientSecret,
-					refresh_token: this.config.credentials.refreshToken,
+					...(this.config.credentials.clientId && {
+						client_id: this.config.credentials.clientId,
+					}),
+					...(this.config.credentials.clientSecret && {
+						client_secret: this.config.credentials.clientSecret,
+					}),
+					...(this.config.credentials.refreshToken && {
+						refresh_token: this.config.credentials.refreshToken,
+					}),
 				}),
 			});
 
@@ -304,9 +386,9 @@ export class ProtectedAmazonService extends ProtectedServiceBase {
 	 * Get service health including circuit breaker status
 	 */
 	getHealthStatus() {
-		const stats = this.getStats();
+		const stats = (this as any).getStats();
 		return {
-			healthy: this.isHealthy(),
+			healthy: (this as any).isHealthy(),
 			circuitBreakerState: stats.state,
 			totalRequests: stats.totalRequests,
 			successRate:

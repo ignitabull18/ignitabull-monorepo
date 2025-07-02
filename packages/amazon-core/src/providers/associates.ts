@@ -4,10 +4,11 @@
  */
 
 import {
-	AmazonAPIError,
-	AmazonError,
-	AmazonRateLimitError,
-} from "../errors/base";
+	AssociatesAPIError,
+	AssociatesAPITPSError,
+	ProductNotFoundError,
+} from "../errors/api-errors";
+import { AmazonConfigError } from "../errors/base";
 import { NetworkErrorFactory } from "../errors/network-errors";
 import type {
 	AssociatesBrowseNode,
@@ -20,19 +21,16 @@ import type {
 	GetVariationsRequest,
 	SearchItemsRequest,
 } from "../types/associates";
+import type { AssociatesConfig } from "../types/config";
 import type {
 	APIResponse,
-	AssociatesConfig,
-	BaseAmazonProvider,
 	AssociatesProvider as IAssociatesProvider,
 	RequestOptions,
 } from "../types/provider";
 import { AssociatesAuthProvider } from "../utils/auth";
-import { MemoryCache } from "../utils/cache";
-import { createProviderLogger } from "../utils/logger";
 import { RateLimiter } from "../utils/rate-limiter";
-import { ExponentialBackoffStrategy, RetryExecutor } from "../utils/retry";
 import { ValidationUtils } from "../utils/validation";
+import { BaseProvider } from "./base-provider";
 
 /**
  * Associates API endpoint configurations
@@ -59,7 +57,8 @@ const ASSOCIATES_API_RATE_LIMITS = {
  * Amazon Associates API provider implementation
  */
 export class AssociatesProvider
-	implements IAssociatesProvider, BaseAmazonProvider
+	extends BaseProvider
+	implements IAssociatesProvider
 {
 	readonly providerId = "associates";
 	readonly name = "Amazon Associates API (PA-API 5.0)";
@@ -67,33 +66,12 @@ export class AssociatesProvider
 
 	private readonly config: AssociatesConfig;
 	private readonly authProvider: AssociatesAuthProvider;
-	private readonly retryExecutor: RetryExecutor;
-	private readonly rateLimiters = new Map<string, RateLimiter>();
-	private readonly cache: MemoryCache;
-	private readonly logger = createProviderLogger("associates");
 	private initialized = false;
 
 	constructor(config: AssociatesConfig) {
+		super(config.cache, config.retry);
 		this.config = config;
 		this.authProvider = new AssociatesAuthProvider(config);
-
-		// Initialize retry executor with Associates API specific configuration (very conservative)
-		const retryStrategy = new ExponentialBackoffStrategy({
-			maxRetries: config.retry?.maxRetries || 2,
-			baseDelay: config.retry?.baseDelay || 2000,
-			maxDelay: config.retry?.maxDelay || 60000,
-			backoffMultiplier: config.retry?.backoffMultiplier || 3,
-			retryableStatuses: [429, 500, 502, 503, 504],
-			retryableErrors: ["ECONNRESET", "ETIMEDOUT", "ENOTFOUND"],
-		});
-
-		this.retryExecutor = new RetryExecutor(retryStrategy, config.retry!);
-
-		// Initialize cache with longer TTL for Associates API
-		this.cache = new MemoryCache({
-			defaultTTL: config.cache?.defaultTTL || 1800, // 30 minutes
-			maxSize: config.cache?.maxSize || 1000,
-		});
 
 		this.logger.info("Associates API provider initialized", {
 			region: config.region,
@@ -108,7 +86,7 @@ export class AssociatesProvider
 			// Validate credentials
 			const isValid = await this.authProvider.validateCredentials();
 			if (!isValid) {
-				throw new AmazonError("Invalid Associates API credentials");
+				throw new AmazonConfigError("Invalid Associates API credentials");
 			}
 
 			// Initialize rate limiters for known endpoints
@@ -160,11 +138,17 @@ export class AssociatesProvider
 	async getItems(request: GetItemsRequest): Promise<AssociatesProductResponse> {
 		// Validate request
 		if (!request.ItemIds || request.ItemIds.length === 0) {
-			throw new AmazonError("ItemIds are required");
+			throw new AssociatesAPIError("ItemIds are required", {
+				code: "INVALID_REQUEST",
+				retryable: false,
+			});
 		}
 
 		if (request.ItemIds.length > 10) {
-			throw new AmazonError("Maximum 10 items allowed per request");
+			throw new AssociatesAPIError("Maximum 10 items allowed per request", {
+				code: "INVALID_REQUEST",
+				retryable: false,
+			});
 		}
 
 		// Validate ASINs
@@ -211,7 +195,7 @@ export class AssociatesProvider
 			!response.ItemsResult?.Items ||
 			response.ItemsResult.Items.length === 0
 		) {
-			throw new AmazonError(`Item not found: ${asin}`);
+			throw new ProductNotFoundError(asin, "associates");
 		}
 
 		return response.ItemsResult.Items[0];
@@ -223,7 +207,13 @@ export class AssociatesProvider
 	): Promise<AssociatesSearchResponse> {
 		// Validate request
 		if (!request.Keywords && !request.BrowseNodeId) {
-			throw new AmazonError("Either Keywords or BrowseNodeId is required");
+			throw new AssociatesAPIError(
+				"Either Keywords or BrowseNodeId is required",
+				{
+					code: "INVALID_REQUEST",
+					retryable: false,
+				},
+			);
 		}
 
 		const requestBody = {
@@ -267,11 +257,20 @@ export class AssociatesProvider
 		request: GetBrowseNodesRequest,
 	): Promise<AssociatesBrowseNode[]> {
 		if (!request.BrowseNodeIds || request.BrowseNodeIds.length === 0) {
-			throw new AmazonError("BrowseNodeIds are required");
+			throw new AssociatesAPIError("BrowseNodeIds are required", {
+				code: "INVALID_REQUEST",
+				retryable: false,
+			});
 		}
 
 		if (request.BrowseNodeIds.length > 10) {
-			throw new AmazonError("Maximum 10 browse nodes allowed per request");
+			throw new AssociatesAPIError(
+				"Maximum 10 browse nodes allowed per request",
+				{
+					code: "INVALID_REQUEST",
+					retryable: false,
+				},
+			);
 		}
 
 		const requestBody = {
@@ -299,7 +298,11 @@ export class AssociatesProvider
 		});
 
 		if (browseNodes.length === 0) {
-			throw new AmazonError(`Browse node not found: ${browseNodeId}`);
+			throw new AssociatesAPIError(`Browse node not found: ${browseNodeId}`, {
+				code: "BROWSE_NODE_NOT_FOUND",
+				statusCode: 404,
+				retryable: false,
+			});
 		}
 
 		return browseNodes[0];
@@ -310,7 +313,10 @@ export class AssociatesProvider
 		request: GetVariationsRequest,
 	): Promise<AssociatesVariationsResponse> {
 		if (!request.ASIN) {
-			throw new AmazonError("ASIN is required for variations");
+			throw new AssociatesAPIError("ASIN is required for variations", {
+				code: "INVALID_REQUEST",
+				retryable: false,
+			});
 		}
 
 		const requestBody = {
@@ -468,7 +474,10 @@ export class AssociatesProvider
 		options: RequestOptions = {},
 		requestId?: string,
 	): Promise<APIResponse<T>> {
-		const baseUrl = ASSOCIATES_API_ENDPOINTS[this.config.region];
+		const baseUrl =
+			ASSOCIATES_API_ENDPOINTS[
+				this.config.region as keyof typeof ASSOCIATES_API_ENDPOINTS
+			] || ASSOCIATES_API_ENDPOINTS["us-east-1"];
 		const url = `${baseUrl}${path}`;
 
 		this.logger.logRequest("associates", path, method, requestId);
@@ -512,11 +521,9 @@ export class AssociatesProvider
 			// Handle errors
 			if (!response.ok) {
 				if (response.status === 429) {
-					throw new AmazonRateLimitError(
-						url,
-						response.status,
-						response.statusText,
-						undefined, // Associates API doesn't provide retry-after
+					throw new AssociatesAPITPSError(
+						`Rate limit exceeded: ${response.statusText}`,
+						requestId,
 					);
 				}
 
@@ -528,24 +535,26 @@ export class AssociatesProvider
 				) {
 					const errorData = data as any;
 					if (errorData.__type && errorData.message) {
-						throw new AmazonAPIError(
+						throw new AssociatesAPIError(
 							`Associates API error: ${errorData.message}`,
-							response.status,
-							responseText,
 							{
-								provider: "associates",
-								endpoint: path,
-								errorType: errorData.__type,
+								code: errorData.__type || "ASSOCIATES_API_ERROR",
+								statusCode: response.status,
+								requestId,
+								retryable: false,
 							},
 						);
 					}
 				}
 
-				throw new AmazonAPIError(
+				throw new AssociatesAPIError(
 					`Associates API request failed: ${response.statusText}`,
-					response.status,
-					responseText,
-					{ provider: "associates", endpoint: path },
+					{
+						code: `HTTP_${response.status}`,
+						statusCode: response.status,
+						requestId,
+						retryable: response.status >= 500,
+					},
 				);
 			}
 
@@ -553,10 +562,10 @@ export class AssociatesProvider
 				data,
 				statusCode: response.status,
 				statusText: response.statusText,
-				headers: Object.fromEntries(response.headers.entries()),
+				headers: {},
 			};
 		} catch (error) {
-			if (error instanceof AmazonError) {
+			if (error instanceof AssociatesAPIError) {
 				throw error;
 			}
 
@@ -591,6 +600,8 @@ export class AssociatesProvider
 				new RateLimiter({
 					requestsPerSecond: config.requestsPerSecond,
 					burstLimit: config.burstLimit,
+					backoffMultiplier: 2,
+					maxBackoffTime: 60000,
 					jitter: true,
 				}),
 			);
@@ -627,7 +638,10 @@ export class AssociatesProvider
 			"eu-central-1": "www.amazon.de",
 			"ap-northeast-1": "www.amazon.co.jp",
 		};
-		return marketplaces[this.config.region] || "www.amazon.com";
+		return (
+			marketplaces[this.config.region as keyof typeof marketplaces] ||
+			"www.amazon.com"
+		);
 	}
 
 	private getAffiliateBaseUrl(): string {
@@ -638,7 +652,10 @@ export class AssociatesProvider
 			"eu-central-1": "https://www.amazon.de",
 			"ap-northeast-1": "https://www.amazon.co.jp",
 		};
-		return marketplaces[this.config.region] || "https://www.amazon.com";
+		return (
+			marketplaces[this.config.region as keyof typeof marketplaces] ||
+			"https://www.amazon.com"
+		);
 	}
 
 	private getDefaultResources(): string[] {

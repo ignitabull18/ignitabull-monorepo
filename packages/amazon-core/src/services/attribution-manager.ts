@@ -13,11 +13,7 @@ import type {
 	CreateAttributionCampaignRequest,
 	CrossChannelAnalysis,
 } from "../types/attribution";
-import type {
-	AnalyticsRecommendation,
-	CacheEntry,
-	ChannelPattern,
-} from "../types/common";
+import type { AnalyticsRecommendation, ChannelPattern } from "../types/common";
 import { MemoryCache } from "../utils/cache";
 
 export interface AttributionManagerConfig {
@@ -123,7 +119,7 @@ export interface AttributionBenchmarks {
 export class AttributionManager {
 	private attributionProvider: AttributionProvider;
 	private config: AttributionManagerConfig;
-	private cache: MemoryCache<CacheEntry<unknown>>;
+	private cache: MemoryCache;
 
 	constructor(
 		attributionProvider: AttributionProvider,
@@ -154,10 +150,11 @@ export class AttributionManager {
 			...config,
 		};
 
-		this.cache = new MemoryCache<CacheEntry<unknown>>({
+		this.cache = new MemoryCache({
 			maxSize: 500,
 			ttl: this.config.caching?.ttl || 300000,
 			enabled: this.config.caching?.enabled ?? true,
+			keyPrefix: "attribution",
 		});
 	}
 
@@ -178,7 +175,7 @@ export class AttributionManager {
 	}> {
 		const cacheKey = `dashboard:${advertiserId}:${startDate}:${endDate}`;
 
-		return this.cache.get(cacheKey, async () => {
+		return this.cache.getOrCompute(cacheKey, async () => {
 			const campaigns =
 				await this.attributionProvider.getAttributionCampaigns(advertiserId);
 
@@ -269,7 +266,7 @@ export class AttributionManager {
 	): Promise<CrossChannelInsights> {
 		const cacheKey = `cross-channel:${advertiserId}:${startDate}:${endDate}`;
 
-		return this.cache.get(cacheKey, async () => {
+		return this.cache.getOrCompute(cacheKey, async () => {
 			const crossChannelAnalysis =
 				await this.attributionProvider.getCrossChannelAnalysis(
 					advertiserId,
@@ -377,7 +374,7 @@ export class AttributionManager {
 	}> {
 		const cacheKey = `optimize:${campaignId}`;
 
-		return this.cache.get(cacheKey, async () => {
+		return this.cache.getOrCompute(cacheKey, async () => {
 			const suggestions =
 				await this.attributionProvider.getOptimizationSuggestions(campaignId);
 
@@ -441,7 +438,7 @@ export class AttributionManager {
 	): Promise<AttributionBenchmarks> {
 		const cacheKey = `benchmarks:${campaignType}:${industry}`;
 
-		return this.cache.get(
+		return this.cache.getOrCompute(
 			cacheKey,
 			async () => {
 				// In a real implementation, this would fetch from a benchmarks service
@@ -674,12 +671,14 @@ export class AttributionManager {
 
 		if (topChannel.roas > 5.0 && topChannel.contribution < 30) {
 			recommendations.push({
+				id: `budget-shift-${Date.now()}`,
 				type: "BUDGET_SHIFT",
-				priority: "HIGH",
+				priority: "high",
+				title: "Reallocate Budget to High-Performing Channel",
 				description: `Increase budget allocation to ${topChannel.channel} (+25%) due to strong ROAS of ${topChannel.roas.toFixed(2)}x`,
-				expectedImpact: 15,
-				implementation:
-					"Shift budget from underperforming channels over 2 weeks",
+				impact: "15% expected increase in conversions",
+				effort: "low",
+				actions: ["Shift budget from underperforming channels over 2 weeks"],
 			});
 		}
 
@@ -694,11 +693,14 @@ export class AttributionManager {
 
 		if (missingChannels.length > 0) {
 			recommendations.push({
+				id: `channel-expansion-${Date.now()}`,
 				type: "CHANNEL_EXPANSION",
-				priority: "MEDIUM",
+				priority: "medium",
+				title: "Expand to New Marketing Channel",
 				description: `Explore ${missingChannels[0]} to diversify channel mix and reach new audiences`,
-				expectedImpact: 10,
-				implementation: "Start with 10% budget allocation test campaign",
+				impact: "10% expected new customer acquisition",
+				effort: "medium",
+				actions: ["Start with 10% budget allocation test campaign"],
 			});
 		}
 

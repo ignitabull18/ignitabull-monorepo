@@ -49,13 +49,13 @@ export interface TrackingContext {
 }
 
 export class VisitorTrackingService {
-	private config: TrackingConfiguration;
 	private sessions: Map<string, VisitorSession> = new Map();
 	private rules: FollowUpRule[] = [];
 	private isInitialized = false;
 
 	constructor(_config: TrackingConfiguration) {
-		this.config = _config;
+		// Config would be used here for initialization
+		// For now, we just accept it to maintain the interface
 	}
 
 	async initialize(): Promise<void> {
@@ -340,7 +340,11 @@ export class VisitorTrackingService {
 		switch (trigger.type) {
 			case "page_visit":
 				return pageView && trigger.value !== undefined
-					? this.matchesPattern(pageView.path, String(trigger.value), trigger.operator)
+					? this.matchesPattern(
+							pageView.path,
+							String(trigger.value),
+							trigger.operator,
+						)
 					: false;
 
 			case "time_on_site": {
@@ -865,9 +869,10 @@ export class VisitorTrackingService {
 	): Promise<VisitorLead[]> {
 		return [];
 	}
-	private async getSessionPageViews(_sessionId: string): Promise<PageView[]> {
-		return [];
-	}
+	// Unused method - commented out to avoid linting errors
+	// private async getSessionPageViews(_sessionId: string): Promise<PageView[]> {
+	// 	return [];
+	// }
 	private async getSessionInteractions(
 		_sessionId: string,
 	): Promise<VisitorInteraction[]> {

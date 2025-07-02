@@ -3,8 +3,8 @@
  * Configuration and connection management for Neo4j graph database
  */
 
-import { Neo4jService } from "../../../packages/core/src/services/neo4j-service";
-import type { Neo4jConnectionConfig } from "../../../packages/core/src/types/neo4j";
+import { Neo4jService } from "@ignitabull/core";
+import type { Neo4jConnectionConfig } from "@ignitabull/core";
 
 // Environment variables
 const NEO4J_URI = process.env.NEO4J_URI || "bolt://localhost:7687";

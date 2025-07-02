@@ -3,7 +3,7 @@
  * Handles scheduled background tasks
  */
 
-import { analyticsService } from "@ignitabull/core/services/analytics-service";
+// Analytics service will be initialized per-request
 import { createClient } from "@supabase/supabase-js";
 import { Router } from "express";
 import { asyncHandler } from "../middleware/async-handler";

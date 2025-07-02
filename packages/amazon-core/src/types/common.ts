@@ -209,7 +209,7 @@ export interface ChannelPattern {
 	patterns: Record<string, unknown>;
 }
 
-export interface AttributionModel {
+export interface AttributionModelData {
 	modelType: "lastTouch" | "firstTouch" | "linear" | "timeDecay" | "dataDriver";
 	channels: ChannelPattern[];
 	totalConversions: number;
@@ -311,4 +311,20 @@ export function hasProperty<T extends object, K extends PropertyKey>(
 	key: K,
 ): obj is T & Record<K, unknown> {
 	return key in obj;
+}
+
+/**
+ * Amazon API Credentials
+ */
+export interface AmazonCredentials {
+	accessKeyId: string;
+	secretAccessKey: string;
+	sessionToken?: string;
+	region: string;
+	marketplace?: AmazonMarketplace;
+	// OAuth credentials for Advertising API
+	accessToken?: string;
+	refreshToken?: string;
+	clientId?: string;
+	clientSecret?: string;
 }

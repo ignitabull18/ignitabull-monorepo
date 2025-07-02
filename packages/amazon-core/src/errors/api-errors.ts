@@ -242,16 +242,23 @@ export class InvalidMarketplaceError extends AmazonAPIError {
 }
 
 /**
- * Service unavailable error
+ * Generic API error for unknown providers
  */
-export class ServiceUnavailableError extends AmazonAPIError {
-	constructor(provider: string, message?: string, requestId?: string) {
-		super(message ?? `${provider} service is temporarily unavailable`, {
-			code: "SERVICE_UNAVAILABLE",
-			provider,
-			statusCode: 503,
-			requestId,
-			retryable: true,
+export class GenericAPIError extends AmazonAPIError {
+	constructor(
+		message: string,
+		options: {
+			code?: string;
+			provider: string;
+			statusCode?: number;
+			requestId?: string;
+			retryable?: boolean;
+			cause?: unknown;
+		},
+	) {
+		super(message, {
+			...options,
+			code: options.code ?? "GENERIC_API_ERROR",
 		});
 	}
 }
@@ -361,7 +368,8 @@ export class APIErrorFactory {
 			case "associates":
 				return APIErrorFactory.associates(code, message, status, requestId);
 			default:
-				return new AmazonAPIError(message, {
+				// For unknown providers, create a generic API error
+				return new GenericAPIError(message, {
 					code,
 					provider,
 					statusCode: status,

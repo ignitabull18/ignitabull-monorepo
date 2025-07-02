@@ -7,6 +7,7 @@ import type {
 	AdvertisingAdGroup,
 	AdvertisingCampaign,
 	AdvertisingCampaignResponse,
+	AdvertisingKeyword,
 	AdvertisingKeywordResponse,
 	AdvertisingProductAd,
 	AdvertisingProfile,
@@ -48,12 +49,25 @@ import type {
 	SearchTermsReportRequest,
 	SearchTermsReportResponse,
 } from "./brand-analytics";
-import type { AmazonMarketplace, DateRange, PaginationParams } from "./common";
 import type {
-	CacheConfig,
-	LoggerConfig,
-	RateLimitConfig,
-	RetryConfig,
+	DateRange,
+	Dimensions,
+	Filter,
+	MoneyAmount,
+	PaginationParams,
+	ProductImage,
+} from "./common";
+import type {
+	// AdvertisingConfig, // Reserved for future use
+	// AssociatesConfig, // Reserved for future use
+	// BaseAmazonConfig, // Reserved for future use
+	// BrandAnalyticsConfig, // Reserved for future use
+	// CacheConfig, // Reserved for future use
+	// DSPConfig, // Reserved for future use
+	// LoggerConfig, // Reserved for future use
+	// RateLimitConfig, // Reserved for future use
+	// RetryConfig, // Reserved for future use
+	// SPAPIConfig, // Reserved for future use
 } from "./config";
 import type {
 	CreateDSPAudienceRequest,
@@ -86,105 +100,6 @@ import type {
 	SPAPIReport,
 	SPAPIReportsResponse,
 } from "./sp-api";
-
-/**
- * Base configuration for all Amazon providers
- */
-export interface BaseAmazonConfig {
-	marketplace?: AmazonMarketplace;
-	region: string;
-	debug?: boolean;
-	timeout?: number;
-	sandbox?: boolean;
-	retry?: RetryConfig;
-	rateLimit?: RateLimitConfig;
-	cache?: CacheConfig;
-	logger?: LoggerConfig;
-}
-
-/**
- * SP-API specific configuration
- */
-export interface SPAPIConfig extends BaseAmazonConfig {
-	clientId: string;
-	clientSecret: string;
-	refreshToken: string;
-	lwaClientId: string;
-	lwaClientSecret: string;
-	region:
-		| "us-east-1"
-		| "us-west-2"
-		| "eu-west-1"
-		| "eu-central-1"
-		| "ap-northeast-1";
-}
-
-/**
- * Advertising API configuration
- */
-export interface AdvertisingConfig extends BaseAmazonConfig {
-	clientId: string;
-	clientSecret: string;
-	refreshToken: string;
-	profileId: string;
-	region:
-		| "us-east-1"
-		| "us-west-2"
-		| "eu-west-1"
-		| "eu-central-1"
-		| "ap-northeast-1";
-}
-
-/**
- * Associates API configuration
- */
-export interface AssociatesConfig extends BaseAmazonConfig {
-	accessKey: string;
-	secretKey: string;
-	partnerTag: string;
-	partnerType?: "Associates";
-	region:
-		| "us-east-1"
-		| "us-west-2"
-		| "eu-west-1"
-		| "eu-central-1"
-		| "ap-northeast-1";
-	host?: string;
-}
-
-/**
- * Brand Analytics API configuration
- */
-export interface BrandAnalyticsConfig extends BaseAmazonConfig {
-	clientId: string;
-	clientSecret: string;
-	refreshToken: string;
-	advertisingAccountId: string;
-	brandEntityId?: string;
-	defaultMarketplaceId?: string;
-	region:
-		| "us-east-1"
-		| "us-west-2"
-		| "eu-west-1"
-		| "eu-central-1"
-		| "ap-northeast-1";
-}
-
-/**
- * DSP API configuration
- */
-export interface DSPConfig extends BaseAmazonConfig {
-	clientId: string;
-	clientSecret: string;
-	refreshToken: string;
-	advertiserId: string;
-	region:
-		| "us-east-1"
-		| "us-west-2"
-		| "eu-west-1"
-		| "eu-central-1"
-		| "ap-northeast-1";
-}
 
 /**
  * API response wrapper
@@ -721,7 +636,7 @@ export interface Campaign {
 	dailyBudget: MoneyAmount;
 	startDate: Date;
 	endDate?: Date;
-	performance?: CampaignPerformance;
+	performance?: any; // CampaignPerformance type is from advertising.ts
 }
 
 export interface CampaignSearchParams extends PaginationParams {
@@ -730,14 +645,7 @@ export interface CampaignSearchParams extends PaginationParams {
 	name?: string;
 }
 
-export interface CreateCampaignRequest {
-	name: string;
-	campaignType: "sponsoredProducts" | "sponsoredBrands" | "sponsoredDisplay";
-	targetingType: "manual" | "auto";
-	dailyBudget: number;
-	startDate: Date;
-	endDate?: Date;
-}
+// CreateCampaignRequest is now imported from types/advertising.ts
 
 export interface CampaignUpdate {
 	name?: string;
@@ -756,12 +664,7 @@ export interface Keyword {
 	performance?: KeywordPerformance;
 }
 
-export interface CreateKeywordRequest {
-	keywordText: string;
-	matchType: "exact" | "phrase" | "broad";
-	bid: number;
-	state?: "enabled" | "paused";
-}
+// CreateKeywordRequest is now imported from types/advertising.ts
 
 export interface KeywordUpdate {
 	keywordId: string;
@@ -769,7 +672,9 @@ export interface KeywordUpdate {
 	bid?: number;
 }
 
-export interface CampaignPerformance {
+// CampaignPerformance is already exported from advertising.ts
+// Import it instead of redefining
+export interface KeywordPerformance {
 	impressions: number;
 	clicks: number;
 	cost: MoneyAmount;
@@ -778,9 +683,6 @@ export interface CampaignPerformance {
 	ctr: number; // Click-through rate
 	acos: number; // Advertising cost of sales
 	roas: number; // Return on ad spend
-}
-
-export interface KeywordPerformance extends CampaignPerformance {
 	searchTerm?: string;
 }
 
@@ -890,33 +792,45 @@ export interface Address {
 	phone?: string;
 }
 
-export interface SuccessResponse {
-	success: boolean;
-	message?: string;
+// Common types are now imported from types/common.ts
+// - SuccessResponse
+// - MoneyAmount
+// - ProductImage
+// - Dimensions
+// - Filter
+
+/**
+ * Authentication configuration
+ */
+export interface AuthConfig {
+	clientId: string;
+	clientSecret: string;
+	refreshToken?: string;
+	accessToken?: string;
+	region: string;
+	marketplace?: string;
 }
 
-export interface MoneyAmount {
-	amount: number;
-	currencyCode: string;
+/**
+ * Generic provider configuration
+ */
+export interface ProviderConfig {
+	auth: AuthConfig;
+	rateLimits?: {
+		requestsPerSecond?: number;
+		burstLimit?: number;
+	};
+	retries?: {
+		maxRetries?: number;
+		backoffMultiplier?: number;
+	};
+	cache?: {
+		enabled?: boolean;
+		ttl?: number;
+	};
+	timeout?: number;
+	sandbox?: boolean;
 }
 
-export interface ProductImage {
-	url: string;
-	height?: number;
-	width?: number;
-	variant?: string;
-}
-
-export interface Dimensions {
-	height?: number;
-	length?: number;
-	width?: number;
-	weight?: number;
-	unit: string;
-}
-
-export interface Filter<T = string> {
-	field: string;
-	operator: "eq" | "ne" | "gt" | "gte" | "lt" | "lte" | "in" | "contains";
-	value: T | T[];
-}
+// Re-export commonly used config types
+// export type { RateLimitConfig } from "./config"; // Reserved for future use

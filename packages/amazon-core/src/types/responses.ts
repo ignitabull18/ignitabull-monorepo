@@ -189,7 +189,7 @@ export interface AsyncOperationResponse {
 /**
  * Response type helpers for type narrowing
  */
-export type SuccessResponse<T> = BaseResponse<T> & { success: true };
+export type SuccessfulResponse<T> = BaseResponse<T> & { success: true };
 export type FailureResponse = ErrorResponse & { success: false };
 
 /**
@@ -197,7 +197,7 @@ export type FailureResponse = ErrorResponse & { success: false };
  */
 export function isSuccessResponse<T>(
 	response: BaseResponse<T> | ErrorResponse,
-): response is SuccessResponse<T> {
+): response is SuccessfulResponse<T> {
 	return response.success === true;
 }
 

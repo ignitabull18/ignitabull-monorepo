@@ -117,7 +117,12 @@ export interface SearchDashboard {
  */
 export class SearchAnalyticsService {
 	private readonly logger = createProviderLogger("search-analytics-service");
-	private readonly cache = new MemoryCache({ defaultTTL: 900, maxSize: 200 });
+	private readonly cache = new MemoryCache({
+		enabled: true,
+		ttl: 900,
+		maxSize: 200,
+		keyPrefix: "amazon_search_analytics",
+	});
 	private readonly config: SearchAnalyticsConfig;
 
 	constructor(
@@ -170,31 +175,29 @@ export class SearchAnalyticsService {
 		try {
 			const range = dateRange || this.getDefaultDateRange();
 
-			// Fetch all data in parallel
-			const [
-				visibility,
-				metrics,
-				rankings,
-				opportunities,
-				anomalies,
-				recommendations,
-			] = await Promise.all([
+			// First fetch metrics and visibility
+			const [visibility, metrics] = await Promise.all([
 				this.searchProvider.getSearchVisibilityScore(asin, marketplaceId),
 				this.searchProvider.getSearchQueryMetrics(asin, range, marketplaceId),
-				this.getKeywordRankingChanges(asin, marketplaceId),
-				this.searchProvider.findLongTailOpportunities(
-					metrics.slice(0, 5).map((m) => m.query),
-					marketplaceId,
-				),
-				this.searchProvider.detectSearchAnomalies(asin, range, marketplaceId),
-				this.searchProvider.getSEORecommendations(asin, marketplaceId),
 			]);
 
+			// Then fetch the rest using metrics data
+			const [rankings, opportunities, anomalies, recommendations] =
+				await Promise.all([
+					this.getKeywordRankingChanges(asin, marketplaceId),
+					this.searchProvider.findLongTailOpportunities(
+						(metrics as any[]).slice(0, 5).map((m: any) => m.query),
+						marketplaceId,
+					),
+					this.searchProvider.detectSearchAnomalies(asin, range, marketplaceId),
+					this.searchProvider.getSEORecommendations(asin, marketplaceId),
+				]);
+
 			const totalImpressions = metrics.reduce(
-				(sum, m) => sum + m.impressions,
+				(sum: number, m: any) => sum + m.impressions,
 				0,
 			);
-			const totalClicks = metrics.reduce((sum, m) => sum + m.clicks, 0);
+			const totalClicks = metrics.reduce((sum, m: any) => sum + m.clicks, 0);
 
 			const dashboard: SearchDashboard = {
 				overview: {
@@ -204,7 +207,7 @@ export class SearchAnalyticsService {
 					totalClicks,
 					averageCTR:
 						totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
-					topKeywords: metrics.slice(0, 5).map((m) => m.query),
+					topKeywords: metrics.slice(0, 5).map((m: any) => m.query),
 				},
 				rankings,
 				opportunities: opportunities.slice(0, 10),
@@ -215,10 +218,9 @@ export class SearchAnalyticsService {
 			await this.cache.set(cacheKey, dashboard, 1800); // Cache for 30 minutes
 			return dashboard;
 		} catch (error) {
-			this.logger.error("Failed to generate search dashboard", { asin, error });
+			this.logger.error("Failed to generate search dashboard", error instanceof Error ? error : new Error(String(error)), { asin });
 			throw new AmazonServiceError("Failed to generate search dashboard", {
-				asin,
-				error,
+				cause: { asin, originalError: error },
 			});
 		}
 	}
@@ -232,7 +234,9 @@ export class SearchAnalyticsService {
 	): Promise<SEOActionPlan> {
 		try {
 			// Get product details
-			const product = await this.spApiProvider.getProduct(asin, marketplaceId);
+			const product = await this.spApiProvider.getCatalogItem(asin, [
+				marketplaceId,
+			]);
 
 			// Get current quality score and recommendations
 			const [qualityScore, recommendations] = await Promise.all([
@@ -293,7 +297,7 @@ export class SearchAnalyticsService {
 
 			const actionPlan: SEOActionPlan = {
 				asin,
-				productTitle: product.title,
+				productTitle: product.attributes?.title || "Unknown Product",
 				currentScore: qualityScore.overallScore,
 				targetScore: Math.min(
 					qualityScore.overallScore + totalVisibilityIncrease,
@@ -309,10 +313,9 @@ export class SearchAnalyticsService {
 
 			return actionPlan;
 		} catch (error) {
-			this.logger.error("Failed to generate SEO action plan", { asin, error });
+			this.logger.error("Failed to generate SEO action plan", error instanceof Error ? error : new Error(String(error)), { asin });
 			throw new AmazonServiceError("Failed to generate SEO action plan", {
-				asin,
-				error,
+				cause: { asin, originalError: error },
 			});
 		}
 	}
@@ -390,15 +393,12 @@ export class SearchAnalyticsService {
 
 			return landscape;
 		} catch (error) {
-			this.logger.error("Failed to analyze competitive landscape", {
+			this.logger.error("Failed to analyze competitive landscape", error instanceof Error ? error : new Error(String(error)), {
 				asin,
 				category,
-				error,
 			});
 			throw new AmazonServiceError("Failed to analyze competitive landscape", {
-				asin,
-				category,
-				error,
+				cause: { asin, category, originalError: error },
 			});
 		}
 	}
@@ -435,15 +435,12 @@ export class SearchAnalyticsService {
 
 			return trackingData;
 		} catch (error) {
-			this.logger.error("Failed to track keyword performance", {
+			this.logger.error("Failed to track keyword performance", error instanceof Error ? error : new Error(String(error)), {
 				asin,
 				keywords,
-				error,
 			});
 			throw new AmazonServiceError("Failed to track keyword performance", {
-				asin,
-				keywords,
-				error,
+				cause: { asin, keywords, originalError: error },
 			});
 		}
 	}
@@ -469,13 +466,15 @@ export class SearchAnalyticsService {
 				);
 
 			// Get product details
-			const product = await this.spApiProvider.getProduct(asin, marketplaceId);
+			const product = await this.spApiProvider.getCatalogItem(asin, [
+				marketplaceId,
+			]);
 
 			// Add competitive analysis if requested
 			if (includeCompetitors && this.config.reporting?.includeCompetitors) {
 				const landscape = await this.analyzeCompetitiveLandscape(
 					asin,
-					product.category,
+					product.attributes?.category || "general",
 					marketplaceId,
 				);
 
@@ -487,13 +486,11 @@ export class SearchAnalyticsService {
 
 			return baseReport;
 		} catch (error) {
-			this.logger.error("Failed to generate comprehensive report", {
+			this.logger.error("Failed to generate comprehensive report", error instanceof Error ? error : new Error(String(error)), {
 				asin,
-				error,
 			});
 			throw new AmazonServiceError("Failed to generate comprehensive report", {
-				asin,
-				error,
+				cause: { asin, originalError: error },
 			});
 		}
 	}
@@ -533,10 +530,9 @@ export class SearchAnalyticsService {
 				estimatedImpact: (100 - avgScore) * 0.15, // 15% of gap as potential impact
 			};
 		} catch (error) {
-			this.logger.error("Failed to optimize for voice search", { asin, error });
+			this.logger.error("Failed to optimize for voice search", error instanceof Error ? error : new Error(String(error)), { asin });
 			throw new AmazonServiceError("Failed to optimize for voice search", {
-				asin,
-				error,
+				cause: { asin, originalError: error },
 			});
 		}
 	}

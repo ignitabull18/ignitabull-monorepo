@@ -20,7 +20,7 @@ import type {
 	UpdateSEOAudit,
 	UpdateSEOInsight,
 	UpdateSEOMetrics,
-} from "../../../packages/core/src/types/seo-analytics";
+} from "@ignitabull/core";
 
 export class SEORepository {
 	private supabase: ReturnType<typeof createClient>;

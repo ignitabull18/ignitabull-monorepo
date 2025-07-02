@@ -4,14 +4,14 @@
  */
 
 import { Resend } from "resend";
-import { CircuitBreakerPresets } from "../../../packages/core/src/lib/circuit-breaker";
-import { ProtectedServiceBase } from "../../../packages/core/src/services/protected-service-base";
+import { CircuitBreakerPresets } from "@ignitabull/core";
+import { ProtectedServiceBase } from "@ignitabull/core";
 import type {
 	EmailConfig,
 	EmailData,
 	EmailResult,
 	EmailTemplate,
-} from "../../../packages/core/src/types/email";
+} from "@ignitabull/core";
 
 export class EmailService extends ProtectedServiceBase {
 	private resend: Resend;

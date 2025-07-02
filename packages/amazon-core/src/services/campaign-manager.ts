@@ -224,7 +224,12 @@ export interface CampaignManagerConfig {
  */
 export class CampaignManager {
 	private readonly logger = createProviderLogger("campaign-manager");
-	private readonly cache = new MemoryCache({ defaultTTL: 300, maxSize: 1000 });
+	private readonly cache = new MemoryCache({
+		enabled: true,
+		ttl: 300,
+		maxSize: 1000,
+		keyPrefix: "amazon_campaign",
+	});
 	private readonly config: CampaignManagerConfig;
 
 	constructor(
@@ -495,10 +500,10 @@ export class CampaignManager {
 			}
 
 			const advertisingPerf =
-				await this.advertisingProvider.getCampaignPerformance(
-					campaignId,
-					dateRange,
-				);
+				await this.advertisingProvider.getCampaignPerformance(campaignId, {
+					startDate: new Date(dateRange.startDate),
+					endDate: new Date(dateRange.endDate),
+				});
 			performance = this.convertAdvertisingPerformance(advertisingPerf);
 		} else if (platform === "DSP") {
 			if (!this.dspProvider) {
@@ -829,24 +834,26 @@ export class CampaignManager {
 			budget: {
 				type: "DAILY",
 				amount: campaign.dailyBudget,
-				currency: campaign.currency || "USD",
+				currency: "USD", // Advertising API doesn't provide currency
 			},
-			bidStrategy: (campaign.bidding?.strategy as UnifiedBidStrategy) || "AUTO",
+			bidStrategy: campaign.bidding?.strategy === "manual" ? "MANUAL" : "AUTO",
 			targeting: {
-				type: campaign.targetingType,
+				type: campaign.targetingType === "manual" ? "MANUAL" : "AUTO",
 				keywords: [], // Would need to fetch separately
 				asins: [], // Would need to fetch separately
 			},
 			schedule: {
-				startDate: campaign.startDate,
-				endDate: campaign.endDate,
+				startDate: campaign.startDate
+					? new Date(campaign.startDate).toISOString().split("T")[0]
+					: "",
+				endDate: campaign.endDate
+					? new Date(campaign.endDate).toISOString().split("T")[0]
+					: "",
 				timezone: "UTC",
 			},
-			performance: campaign.performance
-				? this.convertAdvertisingPerformance(campaign.performance)
-				: undefined,
-			createdDate: campaign.creationDate,
-			lastModifiedDate: campaign.lastUpdatedDate,
+			performance: undefined, // Performance is fetched separately
+			createdDate: campaign.creationDate || "",
+			lastModifiedDate: campaign.lastUpdatedDate || "",
 			metadata: {
 				originalCampaign: campaign,
 			},
@@ -921,14 +928,27 @@ export class CampaignManager {
 		return {
 			name: request.name,
 			campaignType: this.mapUnifiedToAdvertisingType(request.type),
-			targetingType: request.targeting?.type || "manual",
+			targetingType: request.targeting?.type === "MANUAL" ? "manual" : "auto",
 			state: "enabled",
 			dailyBudget: request.budget.amount,
-			startDate: request.schedule.startDate,
-			endDate: request.schedule.endDate,
+			startDate:
+				request.schedule.startDate || new Date().toISOString().split("T")[0],
+			endDate: request.schedule.endDate || undefined,
 			bidding: {
-				strategy: request.bidStrategy as any,
-				placementBidding: request.advertisingOptions?.placementBidAdjustments,
+				strategy:
+					request.bidStrategy === "MANUAL"
+						? "manual"
+						: request.bidStrategy === "AUTO"
+							? "autoForSales"
+							: "legacyForSales",
+				adjustments: request.advertisingOptions?.placementBidAdjustments
+					? Object.entries(
+							request.advertisingOptions.placementBidAdjustments,
+						).map(([placement, percentage]) => ({
+							predicate: placement,
+							percentage,
+						}))
+					: undefined,
 			},
 			portfolioId: request.advertisingOptions?.portfolioId,
 		};
@@ -965,7 +985,7 @@ export class CampaignManager {
 			name: updates.name,
 			state: updates.status?.toLowerCase() as any,
 			dailyBudget: updates.budget?.amount,
-			endDate: updates.schedule?.endDate,
+			endDate: updates.schedule?.endDate || undefined,
 			bidding: updates.bidStrategy
 				? {
 						strategy: updates.bidStrategy as any,

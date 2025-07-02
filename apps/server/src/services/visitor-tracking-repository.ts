@@ -22,7 +22,7 @@ import type {
 	VisitorLead,
 	VisitorSegment,
 	VisitorSession,
-} from "../../../packages/core/src/types/visitor-tracking";
+} from "@ignitabull/core";
 
 export class VisitorTrackingRepository {
 	private supabase: ReturnType<typeof createClient>;

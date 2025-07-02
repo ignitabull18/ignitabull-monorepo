@@ -3,24 +3,7 @@
  * Following AI SDK patterns for consistency
  */
 
-/**
- * DSP API configuration
- */
-export interface DSPConfig {
-	clientId: string;
-	clientSecret: string;
-	refreshToken: string;
-	advertiserId: string;
-	region:
-		| "us-east-1"
-		| "us-west-2"
-		| "eu-west-1"
-		| "eu-central-1"
-		| "ap-northeast-1";
-	sandbox?: boolean;
-	timeout?: number;
-	debug?: boolean;
-}
+// DSPConfig is now imported from types/config.ts
 
 /**
  * DSP Campaign types

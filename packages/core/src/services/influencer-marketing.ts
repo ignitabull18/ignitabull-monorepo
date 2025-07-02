@@ -63,7 +63,7 @@ export interface PerformanceReport {
 export class InfluencerMarketingService {
 	private isInitialized = false;
 	private apiKeys: Map<string, string> = new Map();
-	private rateLimits: Map<string, number> = new Map();
+	// private rateLimits: Map<string, number> = new Map();
 
 	async initialize(config?: {
 		apiKeys?: Record<string, string>;
@@ -547,6 +547,12 @@ Campaign Timeline:
 					instagram: { reach: 800000, engagements: 40000, roi: 3.2 },
 					youtube: { reach: 400000, engagements: 20000, roi: 2.5 },
 					tiktok: { reach: 300000, engagements: 15000, roi: 2.1 },
+					twitter: { reach: 0, engagements: 0, roi: 0 },
+					facebook: { reach: 0, engagements: 0, roi: 0 },
+					linkedin: { reach: 0, engagements: 0, roi: 0 },
+					twitch: { reach: 0, engagements: 0, roi: 0 },
+					pinterest: { reach: 0, engagements: 0, roi: 0 },
+					snapchat: { reach: 0, engagements: 0, roi: 0 },
 				},
 				recommendations: [
 					"Focus more budget on Instagram campaigns due to higher ROI",

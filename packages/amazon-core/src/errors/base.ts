@@ -39,15 +39,20 @@ export abstract class AmazonError extends Error {
 	 * Convert error to JSON representation
 	 */
 	toJSON() {
-		return {
+		const result: any = {
 			name: this.name,
 			message: this.message,
 			code: this.code,
 			retryable: this.retryable,
 			timestamp: this.timestamp.toISOString(),
 			stack: this.stack,
-			...(this.cause && { cause: this.cause }),
 		};
+
+		if (this.cause) {
+			result.cause = this.cause;
+		}
+
+		return result;
 	}
 
 	/**
@@ -165,6 +170,41 @@ export function isAmazonAPIError(error: unknown): error is AmazonAPIError {
 }
 
 /**
+ * Rate limit error
+ */
+export class AmazonRateLimitError extends AmazonAPIError {
+	readonly retryAfter?: number;
+
+	constructor(
+		message: string,
+		options: {
+			provider: string;
+			retryAfter?: number;
+			requestId?: string;
+			cause?: unknown;
+		},
+	) {
+		super(message, {
+			code: "AMAZON_RATE_LIMIT_ERROR",
+			provider: options.provider,
+			statusCode: 429,
+			requestId: options.requestId,
+			retryable: true,
+			cause: options.cause,
+		});
+
+		this.retryAfter = options.retryAfter;
+	}
+
+	toJSON() {
+		return {
+			...super.toJSON(),
+			retryAfter: this.retryAfter,
+		};
+	}
+}
+
+/**
  * Service-level error for Amazon service orchestration issues
  */
 export class AmazonServiceError extends AmazonError {
@@ -220,26 +260,8 @@ export class AmazonErrorFactory {
 		return new AmazonAuthError(message, { provider, cause });
 	}
 
-	static api(
-		message: string,
-		provider: string,
-		options: {
-			code?: string;
-			statusCode?: number;
-			requestId?: string;
-			retryable?: boolean;
-			cause?: unknown;
-		} = {},
-	): AmazonAPIError {
-		return new AmazonAPIError(message, {
-			code: options.code ?? "AMAZON_API_ERROR",
-			provider,
-			statusCode: options.statusCode,
-			requestId: options.requestId,
-			retryable: options.retryable,
-			cause: options.cause,
-		});
-	}
+	// Note: Removed api() method as AmazonAPIError is abstract
+	// Use specific error classes from api-errors.ts instead
 }
 
 /**

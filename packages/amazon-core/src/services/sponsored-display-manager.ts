@@ -5,7 +5,7 @@
 
 import { AmazonServiceError } from "../errors/base";
 import type { AdvertisingProvider } from "../providers/advertising";
-import type { BrandAnalyticsProvider } from "../providers/brand-analytics";
+// import type { BrandAnalyticsProvider } from "../providers/brand-analytics"; // Reserved for future use
 import type {
 	EnhancedSponsoredDisplayCampaign,
 	SponsoredDisplayAudienceTargeting,
@@ -145,12 +145,17 @@ export interface CreativePerformanceAnalysis {
  */
 export class SponsoredDisplayManager {
 	private readonly logger = createProviderLogger("sponsored-display-manager");
-	private readonly cache = new MemoryCache({ defaultTTL: 600, maxSize: 500 });
+	private readonly cache = new MemoryCache({
+		enabled: true,
+		ttl: 600,
+		maxSize: 500,
+		keyPrefix: "amazon_sponsored_display",
+	});
 	private readonly config: SponsoredDisplayManagerConfig;
 
 	constructor(
 		private readonly advertisingProvider: AdvertisingProvider,
-		private readonly brandAnalyticsProvider?: BrandAnalyticsProvider,
+		// private readonly brandAnalyticsProvider?: BrandAnalyticsProvider, // Reserved for future analytics
 		config: SponsoredDisplayManagerConfig = {},
 	) {
 		this.config = {
@@ -195,7 +200,7 @@ export class SponsoredDisplayManager {
 		const campaignRequest = {
 			name: request.name,
 			campaignType: "sponsoredDisplay" as const,
-			targetingType: request.targetingType === "CONTEXTUAL" ? "manual" : "auto",
+			targetingType: (request.targetingType === "CONTEXTUAL" ? "manual" : "auto") as "manual" | "auto",
 			state: "enabled" as const,
 			dailyBudget:
 				request.budget.type === "daily"
@@ -204,7 +209,7 @@ export class SponsoredDisplayManager {
 			startDate: request.startDate || new Date().toISOString().split("T")[0],
 			endDate: request.endDate,
 			bidding: {
-				strategy: this.mapBidStrategy(request.bidStrategy || "AUTO"),
+				strategy: this.mapBidStrategy(request.bidStrategy || "AUTO") as "manual" | "legacyForSales" | "autoForSales",
 				adjustments: [],
 			},
 		};
@@ -226,12 +231,12 @@ export class SponsoredDisplayManager {
 				budgetType: request.budget.type,
 				budget: {
 					amount: request.budget.amount,
-					currencyCode: campaign.currency || "USD",
+					currencyCode: "USD", // Default currency
 				},
 				endDate: request.endDate,
 			},
 			bidding: {
-				strategy: campaign.bidding?.strategy || "LEGACY_FOR_SALES",
+				strategy: this.normalizeBidStrategy(campaign.bidding?.strategy) || "LEGACY_FOR_SALES",
 				optimizationGoal: request.optimizationGoal,
 				bidOptimization: {
 					enabled: true,
@@ -262,8 +267,8 @@ export class SponsoredDisplayManager {
 				targetCpc: request.budget.amount * 0.02, // 2% of budget as target CPC
 				budgetUtilization: 90,
 			},
-			createdDate: campaign.creationDate,
-			lastUpdatedDate: campaign.lastUpdatedDate,
+			createdDate: campaign.creationDate || new Date().toISOString(),
+			lastUpdatedDate: campaign.lastUpdatedDate || new Date().toISOString(),
 		};
 
 		// Cache the enhanced campaign
@@ -427,7 +432,10 @@ export class SponsoredDisplayManager {
 		// Get campaign performance data
 		const performance = await this.advertisingProvider.getCampaignPerformance(
 			campaignId,
-			dateRange,
+			{
+				startDate: new Date(dateRange.startDate),
+				endDate: new Date(dateRange.endDate),
+			},
 		);
 
 		// Mock creative analysis (would need actual creative-level data)
@@ -513,8 +521,8 @@ export class SponsoredDisplayManager {
 		const performance = await this.advertisingProvider.getCampaignPerformance(
 			campaignId,
 			{
-				startDate: startDate.toISOString().split("T")[0],
-				endDate: endDate.toISOString().split("T")[0],
+				startDate,
+				endDate,
 			},
 		);
 
@@ -665,18 +673,18 @@ export class SponsoredDisplayManager {
 		});
 
 		// Convert to advertising API report request
+		// Map segment types between SponsoredDisplay and general advertising API
+		let mappedSegment: "query" | "placement" | undefined;
+		if (request.segment === "PLACEMENT") {
+			mappedSegment = "placement";
+		} // Other segments are not supported in general advertising API
+
 		const reportRequest = {
 			reportType: "campaigns" as const,
-			recordType: "campaign" as const,
-			metrics: [
-				"impressions",
-				"clicks",
-				"cost",
-				"purchases14d",
-				"sales14d",
-				"acos",
-			],
-			segment: request.segment,
+			recordType: "campaigns" as const, // Fixed: Changed from "campaign" to "campaigns"
+			reportDate: new Date().toISOString().split("T")[0], // Today's date
+			metrics: "impressions,clicks,cost,purchases14d,sales14d,acos", // Fixed: Changed from array to comma-separated string
+			segment: mappedSegment,
 		};
 
 		const { reportId } =
@@ -720,7 +728,7 @@ export class SponsoredDisplayManager {
 		}
 	}
 
-	private mapBidStrategy(strategy: string): string {
+	private mapBidStrategy(strategy: string): "manual" | "legacyForSales" | "autoForSales" {
 		switch (strategy) {
 			case "AUTO":
 				return "legacyForSales";
@@ -765,11 +773,11 @@ export class SponsoredDisplayManager {
 					budgetType: "daily",
 					budget: {
 						amount: campaign.dailyBudget,
-						currencyCode: campaign.currency || "USD",
+						currencyCode: "USD", // Default currency
 					},
 				},
 				bidding: {
-					strategy: campaign.bidding?.strategy || "LEGACY_FOR_SALES",
+					strategy: this.normalizeBidStrategy(campaign.bidding?.strategy) || "LEGACY_FOR_SALES",
 					optimizationGoal: "CONVERSIONS",
 				},
 				creative: {
@@ -783,8 +791,8 @@ export class SponsoredDisplayManager {
 					landingPage: "DETAIL_PAGE",
 				},
 				settings: {},
-				createdDate: campaign.creationDate,
-				lastUpdatedDate: campaign.lastUpdatedDate,
+				createdDate: campaign.creationDate || new Date().toISOString(),
+				lastUpdatedDate: campaign.lastUpdatedDate || new Date().toISOString(),
 			};
 
 			await this.cache.set(`sd-campaign:${campaignId}`, enhanced);
@@ -795,6 +803,26 @@ export class SponsoredDisplayManager {
 				error,
 			});
 			return null;
+		}
+	}
+
+	private normalizeBidStrategy(
+		strategy?: string,
+	): "MANUAL" | "LEGACY_FOR_SALES" | "AUTO_FOR_SALES" | "ENHANCED_AUTO" {
+		switch (strategy) {
+			case "manual":
+				return "MANUAL";
+			case "legacyForSales":
+				return "LEGACY_FOR_SALES";
+			case "autoForSales":
+				return "AUTO_FOR_SALES";
+			case "LEGACY_FOR_SALES":
+			case "AUTO_FOR_SALES":
+			case "MANUAL":
+			case "ENHANCED_AUTO":
+				return strategy;
+			default:
+				return "LEGACY_FOR_SALES";
 		}
 	}
 }

@@ -236,7 +236,9 @@ export class RetryExecutor {
 		const executing: Promise<void>[] = [];
 
 		for (let i = 0; i < fns.length; i++) {
-			const promise = executeWithRetry(fns[i], i).then(
+			const fn = fns[i];
+			if (!fn) continue;
+			const promise = executeWithRetry(fn, i).then(
 				(result) => {
 					results[i] = result;
 				},
@@ -294,6 +296,11 @@ export function withRetry(
 		return descriptor;
 	};
 }
+
+/**
+ * Alias for RetryExecutor for backward compatibility
+ */
+export class RetryHandler extends RetryExecutor {}
 
 /**
  * Retry manager for different Amazon APIs

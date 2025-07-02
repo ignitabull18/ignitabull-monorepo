@@ -64,7 +64,7 @@ class CredentialEncryption {
 		let encrypted = cipher.update(text, "utf8", "hex");
 		encrypted += cipher.final("hex");
 
-		const authTag = cipher.getAuthTag();
+		const authTag = (cipher as any).getAuthTag();
 
 		return `${iv.toString("hex")}:${authTag.toString("hex")}:${encrypted}`;
 	}
@@ -80,7 +80,7 @@ class CredentialEncryption {
 			this.secretKey,
 			iv,
 		);
-		decipher.setAuthTag(authTag);
+		(decipher as any).setAuthTag(authTag);
 
 		let decrypted = decipher.update(encrypted, "hex", "utf8");
 		decrypted += decipher.final("utf8");
